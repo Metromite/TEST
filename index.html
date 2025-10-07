@@ -1,24 +1,276 @@
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script>
-  // Firebase config
-  const firebaseConfig = {
-    apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
-    authDomain: "dispatchsystem-23f47.firebaseapp.com",
-    databaseURL: "https://dispatchsystem-23f47-default-rtdb.firebaseio.com",
-    projectId: "dispatchsystem-23f47",
-    storageBucket: "dispatchsystem-23f47.firebasestorage.app",
-    messagingSenderId: "131590857859",
-    appId: "1:131590857859:web:5959d9655fdd0ba7b6",
-    measurementId: "G-49GJE4J123"
-  };
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dispatch Controller — Glass UI</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      background: url('bg.jpg') no-repeat center center/cover;
+      font-family: 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+      color: white;
+      overflow: hidden;
+    }
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    h1, .bay h2, .dispatched-zones h2 {
+      color: white !important;
+      font-weight: 700;
+      -webkit-background-clip: unset;
+      -webkit-text-fill-color: unset;
+      text-shadow: none;
+    }
 
-  // TEST: write to DB
-  db.ref("test/connection").set({
-    message: "Firebase is connected!",
-    timestamp: Date.now()
-  }).then(() => console.log("Success!")).catch(e => console.error("Failed:", e));
-</script>
+    h1 {
+      margin-top: 20px;
+      font-size: 2rem;
+      letter-spacing: 2px;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 95%;
+      max-width: 1300px;
+      margin-top: 20px;
+      gap: 30px;
+    }
+
+    .pending-zones {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 15px;
+      padding: 15px;
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px) saturate(180%);
+      border-radius: 25px;
+      box-shadow: inset 0 0 25px rgba(255,255,255,0.1), 0 0 20px rgba(0,0,0,0.2);
+    }
+
+    .zone {
+      min-width: 100px;
+      padding: 10px 16px;
+      border-radius: 14px;
+      text-align: center;
+      background: rgba(255,255,255,0.15);
+      color: white;
+      backdrop-filter: blur(15px);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+      cursor: grab;
+      transition: all 0.3s ease;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .zone:hover {
+      transform: translateY(-4px) scale(1.05);
+      background: rgba(255,255,255,0.25);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+    }
+
+    .dispatch-bays {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      gap: 20px;
+    }
+
+    .bay {
+      flex: 1;
+      min-height: 150px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 20px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(15px) saturate(180%);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2), inset 0 0 15px rgba(255,255,255,0.1);
+      transition: background 0.3s ease;
+    }
+
+    .bay:hover {
+      background: rgba(255,255,255,0.15);
+    }
+
+    .dispatched-zones {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(18px) saturate(180%);
+      border-radius: 20px;
+      box-shadow: inset 0 0 25px rgba(255,255,255,0.1), 0 0 20px rgba(0,0,0,0.2);
+      padding: 15px;
+      max-width: 100%;
+    }
+
+    .timer, .dispatched-time {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.8rem;
+      opacity: 0.85;
+      color: #ffd700;
+      text-shadow: 0 0 8px rgba(0,0,0,0.4);
+    }
+  </style>
+</head>
+<body>
+  <h1>Dispatch Controller</h1>
+  <div class="container">
+
+    <div class="pending-zones" id="pendingZones">
+      <div class="zone" draggable="true" id="Fujairah">Fujairah</div>
+      <div class="zone" draggable="true" id="RasAlKhaimah">Ras Al Khaimah</div>
+      <div class="zone" draggable="true" id="JabalAli">Jabal Ali</div>
+      <div class="zone" draggable="true" id="AlQuoz2">Al Quoz 2</div>
+      <div class="zone" draggable="true" id="AlQuoz1">Al Quoz 1</div>
+      <div class="zone" draggable="true" id="Mirdiff">Mirdiff</div>
+      <div class="zone" draggable="true" id="BurDubai">Bur Dubai</div>
+      <div class="zone" draggable="true" id="SharjahBuhairah">Sharjah-Buhairah</div>
+      <div class="zone" draggable="true" id="Jumeirah">Jumeirah</div>
+      <div class="zone" draggable="true" id="AlQusais">Al Qusais</div>
+      <div class="zone" draggable="true" id="Deira">Deira</div>
+      <div class="zone" draggable="true" id="Ajman">Ajman</div>
+      <div class="zone" draggable="true" id="SharjahSanayia">Sharjah-Sanayia</div>
+    </div>
+
+    <div class="dispatch-bays">
+      <div class="bay" id="bay4"><h2>Dispatch Bay 4</h2></div>
+      <div class="bay" id="bay3"><h2>Dispatch Bay 3</h2></div>
+      <div class="bay" id="bay2"><h2>Dispatch Bay 2</h2></div>
+      <div class="bay" id="bay1"><h2>Dispatch Bay 1</h2></div>
+    </div>
+
+    <div class="dispatched-zones" id="dispatchedZones">
+      <h2>Dispatched Zones</h2>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-analytics.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
+      authDomain: "dispatchsystem-23f47.firebaseapp.com",
+      databaseURL: "https://dispatchsystem-23f47-default-rtdb.firebaseio.com",
+      projectId: "dispatchsystem-23f47",
+      storageBucket: "dispatchsystem-23f47.firebasestorage.app",
+      messagingSenderId: "131590857859",
+      appId: "1:131590857859:web:5959b6d9d9655fdd0ba7b6",
+      measurementId: "G-49GJE4J123"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const db = getDatabase(app);
+
+    const zones = document.querySelectorAll('.zone');
+    const bays = document.querySelectorAll('.bay');
+    const dispatchedArea = document.getElementById('dispatchedZones');
+    const pendingArea = document.getElementById('pendingZones');
+
+    // Drag & Drop
+    zones.forEach(zone => {
+      zone.addEventListener('dragstart', e => {
+        e.dataTransfer.setData('text/plain', zone.id);
+        setTimeout(() => zone.style.display = 'none', 0);
+      });
+      zone.addEventListener('dragend', () => zone.style.display = 'block');
+    });
+
+    [...bays, dispatchedArea, pendingArea].forEach(area => {
+      area.addEventListener('dragover', e => e.preventDefault());
+      area.addEventListener('drop', e => {
+        e.preventDefault();
+        const zoneId = e.dataTransfer.getData('text/plain');
+        const zone = document.getElementById(zoneId);
+        if (!zone) return;
+
+        let newStatus;
+        if (area.classList.contains('bay')) newStatus = 'in-gate';
+        else if (area.id === 'dispatchedZones') newStatus = 'dispatched';
+        else if (area.id === 'pendingZones') newStatus = 'pending';
+
+        moveZone(zone, area);
+        updateZoneInFirebase(zone.id, newStatus, area.id);
+      });
+    });
+
+    function moveZone(zone, targetArea) {
+      if (zone.dataset.interval) { clearInterval(zone.dataset.interval); delete zone.dataset.interval; }
+      zone.classList.remove('in-gate', 'dispatched', 'waiting');
+      const oldTimer = zone.querySelector('.timer'); if(oldTimer) oldTimer.remove();
+      const oldDispatch = zone.querySelector('.dispatched-time'); if(oldDispatch) oldDispatch.remove();
+      targetArea.appendChild(zone);
+      if (targetArea.classList.contains('bay')) zone.classList.add('in-gate');
+      else if (targetArea.id === 'dispatchedZones') zone.classList.add('dispatched');
+      else if (targetArea.id === 'pendingZones') zone.classList.add('waiting');
+    }
+
+    function updateZoneInFirebase(zoneId, status, areaId) {
+      const now = Date.now();
+      const data = { status };
+      if (status === 'in-gate') { data.startTime = now; data.bayId = areaId; }
+      if (status === 'dispatched') data.dispatchedTime = now;
+      set(ref(db, 'zones/' + zoneId), data);
+    }
+
+    // Listen for real-time updates
+    const zonesRef = ref(db, 'zones/');
+    onValue(zonesRef, snapshot => {
+      const zonesData = snapshot.val();
+      if (!zonesData) return;
+      for (const zoneId in zonesData) {
+        const zone = document.getElementById(zoneId);
+        if (!zone) continue;
+
+        const { status, startTime, dispatchedTime, bayId } = zonesData[zoneId];
+
+        if (status === 'pending') pendingArea.appendChild(zone);
+        else if (status === 'in-gate') {
+          const bay = document.getElementById(bayId) || document.querySelector('.dispatch-bays .bay');
+          bay.appendChild(zone);
+          if (startTime) startTimer(zone, startTime);
+        } else if (status === 'dispatched') {
+          dispatchedArea.appendChild(zone);
+          if (dispatchedTime) showDispatchedTime(zone, dispatchedTime);
+        }
+      }
+    });
+
+    function startTimer(zone, startTime) {
+      if (zone.dataset.interval) clearInterval(zone.dataset.interval);
+      const timerDisplay = zone.querySelector('.timer') || document.createElement('span');
+      timerDisplay.classList.add('timer');
+      if (!zone.contains(timerDisplay)) zone.appendChild(timerDisplay);
+      const interval = setInterval(() => {
+        const diff = Math.floor((Date.now() - startTime) / 1000);
+        const minutes = Math.floor(diff / 60);
+        const seconds = diff % 60;
+        timerDisplay.textContent = `⏱ ${minutes}m ${seconds}s`;
+      }, 1000);
+      zone.dataset.interval = interval;
+    }
+
+    function showDispatchedTime(zone, dispatchedTime) {
+      const label = zone.querySelector('.dispatched-time') || document.createElement('span');
+      label.classList.add('dispatched-time');
+      label.textContent = `(Dispatched at: ${new Date(dispatchedTime).toLocaleTimeString()})`;
+      if (!zone.contains(label)) zone.appendChild(label);
+    }
+
+  </script>
+</body>
+</html>
