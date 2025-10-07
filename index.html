@@ -18,7 +18,6 @@
       overflow: hidden;
     }
 
-    /* Headers all bold and white */
     h1, .bay h2, .dispatched-zones h2 {
       color: white !important;
       font-weight: 700;
@@ -157,9 +156,7 @@
     </div>
   </div>
 
-  <!-- Firebase & Main Script -->
   <script type="module">
-    // Firebase initialization
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-analytics.js";
     import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
@@ -211,55 +208,40 @@
       });
     });
 
-    // Move Zone UI
     function moveZone(zone, targetArea) {
-      // Clear previous timer
-      if (zone.dataset.interval) {
-        clearInterval(zone.dataset.interval);
-        delete zone.dataset.interval;
-      }
-
+      if (zone.dataset.interval) { clearInterval(zone.dataset.interval); delete zone.dataset.interval; }
       zone.classList.remove('in-gate', 'dispatched', 'waiting');
       const oldTimer = zone.querySelector('.timer'); if(oldTimer) oldTimer.remove();
       const oldDispatch = zone.querySelector('.dispatched-time'); if(oldDispatch) oldDispatch.remove();
-
       targetArea.appendChild(zone);
-
-      if (targetArea.classList.contains('bay')) {
-        zone.classList.add('in-gate');
-      } else if (targetArea.id === 'dispatchedZones') {
-        zone.classList.add('dispatched');
-      } else if (targetArea.id === 'pendingZones') {
-        zone.classList.add('waiting');
-      }
+      if (targetArea.classList.contains('bay')) zone.classList.add('in-gate');
+      else if (targetArea.id === 'dispatchedZones') zone.classList.add('dispatched');
+      else if (targetArea.id === 'pendingZones') zone.classList.add('waiting');
     }
 
-    // Firebase integration
     function updateZoneInFirebase(zoneId, status, areaId) {
       const now = Date.now();
       const data = { status };
-
-      if (status === 'in-gate') data.startTime = now;
+      if (status === 'in-gate') { data.startTime = now; data.bayId = areaId; }
       if (status === 'dispatched') data.dispatchedTime = now;
-
       set(ref(db, 'zones/' + zoneId), data);
     }
 
-    // Listen to database changes
+    // Listen for real-time updates
     const zonesRef = ref(db, 'zones/');
-    onValue(zonesRef, (snapshot) => {
+    onValue(zonesRef, snapshot => {
       const zonesData = snapshot.val();
       if (!zonesData) return;
-
       for (const zoneId in zonesData) {
         const zone = document.getElementById(zoneId);
         if (!zone) continue;
 
-        const { status, startTime, dispatchedTime } = zonesData[zoneId];
+        const { status, startTime, dispatchedTime, bayId } = zonesData[zoneId];
 
         if (status === 'pending') pendingArea.appendChild(zone);
         else if (status === 'in-gate') {
-          document.querySelector('.dispatch-bays .bay').appendChild(zone); // default bay
+          const bay = document.getElementById(bayId) || document.querySelector('.dispatch-bays .bay');
+          bay.appendChild(zone);
           if (startTime) startTimer(zone, startTime);
         } else if (status === 'dispatched') {
           dispatchedArea.appendChild(zone);
@@ -270,11 +252,9 @@
 
     function startTimer(zone, startTime) {
       if (zone.dataset.interval) clearInterval(zone.dataset.interval);
-
       const timerDisplay = zone.querySelector('.timer') || document.createElement('span');
       timerDisplay.classList.add('timer');
       if (!zone.contains(timerDisplay)) zone.appendChild(timerDisplay);
-
       const interval = setInterval(() => {
         const diff = Math.floor((Date.now() - startTime) / 1000);
         const minutes = Math.floor(diff / 60);
