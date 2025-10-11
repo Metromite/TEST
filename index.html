@@ -1,276 +1,529 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dispatch Controller — Glass UI</title>
-  <style>
-    body {
-      margin: 0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      background: url('bg.jpg') no-repeat center center/cover;
-      font-family: 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-      color: white;
-      overflow: hidden;
-    }
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Dispatch Controller — Glass UI</title>
+<style>
+body{margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;background:url('bg.jpg')no-repeat center/cover;font-family:'SF Pro Display','Segoe UI',Roboto,sans-serif;color:white;overflow:hidden}
+.container{display:flex;flex-direction:column;align-items:center;width:95%;max-width:1300px;padding-top:64px;gap:30px;position:relative}
+.pending-zones{display:flex;justify-content:flex-start;flex-wrap:wrap;gap:15px;padding:15px;background:rgba(255,255,255,0.08);backdrop-filter:blur(20px) saturate(180%);border-radius:25px;box-shadow:inset 0 0 25px rgba(255,255,255,0.1),0 0 20px rgba(0,0,0,0.2);min-height:74px}
+.zone{min-width:100px;padding:10px 16px;border-radius:14px;text-align:center;background:rgba(255,255,255,0.15);color:white;backdrop-filter:blur(15px);box-shadow:0 4px 15px rgba(0,0,0,0.25);cursor:grab;transition:all .22s ease;font-weight:500;letter-spacing:.5px;position:relative;display:inline-flex;flex-direction:column;gap:6px;align-items:center}
+.zone:hover{transform:translateY(-4px) scale(1.05);background:rgba(255,255,255,0.25)}
+.dispatch-bays{display:flex;justify-content:space-between;width:100%;gap:20px}
+.bay{flex:1;min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px;border-radius:20px;background:rgba(255,255,255,0.07);backdrop-filter:blur(15px) saturate(180%);box-shadow:0 10px 30px rgba(0,0,0,0.2),inset 0 0 15px rgba(255,255,255,0.1);transition:background .3s ease;gap:8px;overflow-y:auto}
+.bay:hover{background:rgba(255,255,255,0.15)}
+.dispatched-zones{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;background:rgba(255,255,255,0.08);backdrop-filter:blur(18px) saturate(180%);border-radius:20px;box-shadow:inset 0 0 25px rgba(255,255,255,0.1),0 0 20px rgba(0,0,0,0.2);padding:15px;max-width:100%;min-height:64px}
+.timer,.dispatched-time{display:block;margin-top:4px;font-size:.8rem;opacity:.85;color:#ffd700;text-shadow:0 0 8px rgba(0,0,0,.4)}
+.top-actions{position:absolute;top:8px;right:8px;display:flex;gap:12px;z-index:40}
+.action-btn{width:44px;height:44px;border-radius:22px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);box-shadow:0 8px 20px rgba(0,0,0,0.25);cursor:pointer;transition:transform .12s ease,background .12s ease}
+.action-btn:hover{transform:translateY(-3px);background:rgba(255,255,255,0.1)}
+.pending-controls{position:absolute;left:18px;top:-10px;z-index:30}
+.add-zone-btn{width:40px;height:40px;border-radius:20px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);box-shadow:0 8px 18px rgba(0,0,0,0.25);cursor:pointer}
+.add-zone-btn:hover{transform:translateY(-2px);background:rgba(255,255,255,0.1)}
+.minus-dot{position:absolute;top:-8px;left:-8px;width:22px;height:22px;border-radius:11px;background:#ff394f;color:white;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 6px 12px rgba(0,0,0,0.35);cursor:pointer;transform:scale(0);transition:transform .12s ease;z-index:60}
+.zone.show-minus .minus-dot{transform:scale(1)}
+.seq-badge{position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;border-radius:11px;padding:0 6px;display:flex;align-items:center;justify-content:center;background:#ff394f;color:white;font-size:12px;font-weight:700;box-shadow:0 8px 18px rgba(0,0,0,0.35);z-index:59;pointer-events:none;display:none}
+.name{font-weight:600}
+.bay::-webkit-scrollbar,.pending-zones::-webkit-scrollbar{height:8px;width:8px}
+.bay::-webkit-scrollbar-thumb,.pending-zones::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:4px}
 
-    h1, .bay h2, .dispatched-zones h2 {
-      color: white !important;
-      font-weight: 700;
-      -webkit-background-clip: unset;
-      -webkit-text-fill-color: unset;
-      text-shadow: none;
-    }
+/* Login modal (glass) */
+#loginOverlay{position:fixed;inset:0;background:rgba(3,6,12,0.6);display:flex;align-items:center;justify-content:center;z-index:9999}
+#loginBox{width:360px;max-width:90%;padding:22px;border-radius:16px;background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));backdrop-filter: blur(16px) saturate(150%);box-shadow:0 10px 40px rgba(0,0,0,0.6);color:#fff;display:flex;flex-direction:column;gap:12px}
+#loginBox h3{margin:0;font-size:18px;font-weight:700}
+.login-row{display:flex;flex-direction:column;gap:6px}
+.login-row input{height:40px;border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:white;outline:none}
+.login-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.login-actions .left{display:flex;align-items:center;gap:8px}
+.login-actions button{height:40px;border-radius:10px;padding:0 12px;background:rgba(255,255,255,0.06);border:none;color:white;cursor:pointer}
+.login-small{font-size:12px;opacity:.85}
+.login-link{font-size:12px;color:#ffd700;cursor:pointer;text-decoration:underline}
 
-    h1 {
-      margin-top: 20px;
-      font-size: 2rem;
-      letter-spacing: 2px;
-    }
-
-    .container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 95%;
-      max-width: 1300px;
-      margin-top: 20px;
-      gap: 30px;
-    }
-
-    .pending-zones {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 15px;
-      padding: 15px;
-      background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(20px) saturate(180%);
-      border-radius: 25px;
-      box-shadow: inset 0 0 25px rgba(255,255,255,0.1), 0 0 20px rgba(0,0,0,0.2);
-    }
-
-    .zone {
-      min-width: 100px;
-      padding: 10px 16px;
-      border-radius: 14px;
-      text-align: center;
-      background: rgba(255,255,255,0.15);
-      color: white;
-      backdrop-filter: blur(15px);
-      box-shadow: 0 4px 15px rgba(0,0,0,0.25);
-      cursor: grab;
-      transition: all 0.3s ease;
-      font-weight: 500;
-      letter-spacing: 0.5px;
-    }
-
-    .zone:hover {
-      transform: translateY(-4px) scale(1.05);
-      background: rgba(255,255,255,0.25);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
-    }
-
-    .dispatch-bays {
-      display: flex;
-      justify-content: space-between;
-      width: 100%;
-      gap: 20px;
-    }
-
-    .bay {
-      flex: 1;
-      min-height: 150px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      padding: 20px;
-      border-radius: 20px;
-      background: rgba(255,255,255,0.07);
-      backdrop-filter: blur(15px) saturate(180%);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2), inset 0 0 15px rgba(255,255,255,0.1);
-      transition: background 0.3s ease;
-    }
-
-    .bay:hover {
-      background: rgba(255,255,255,0.15);
-    }
-
-    .dispatched-zones {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 12px;
-      background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(18px) saturate(180%);
-      border-radius: 20px;
-      box-shadow: inset 0 0 25px rgba(255,255,255,0.1), 0 0 20px rgba(0,0,0,0.2);
-      padding: 15px;
-      max-width: 100%;
-    }
-
-    .timer, .dispatched-time {
-      display: block;
-      margin-top: 4px;
-      font-size: 0.8rem;
-      opacity: 0.85;
-      color: #ffd700;
-      text-shadow: 0 0 8px rgba(0,0,0,0.4);
-    }
-  </style>
+/* small helper */
+.small-muted{font-size:12px;opacity:.8;color:#ddd}
+</style>
 </head>
 <body>
-  <h1>Dispatch Controller</h1>
-  <div class="container">
-
-    <div class="pending-zones" id="pendingZones">
-      <div class="zone" draggable="true" id="Fujairah">Fujairah</div>
-      <div class="zone" draggable="true" id="RasAlKhaimah">Ras Al Khaimah</div>
-      <div class="zone" draggable="true" id="JabalAli">Jabal Ali</div>
-      <div class="zone" draggable="true" id="AlQuoz2">Al Quoz 2</div>
-      <div class="zone" draggable="true" id="AlQuoz1">Al Quoz 1</div>
-      <div class="zone" draggable="true" id="Mirdiff">Mirdiff</div>
-      <div class="zone" draggable="true" id="BurDubai">Bur Dubai</div>
-      <div class="zone" draggable="true" id="SharjahBuhairah">Sharjah-Buhairah</div>
-      <div class="zone" draggable="true" id="Jumeirah">Jumeirah</div>
-      <div class="zone" draggable="true" id="AlQusais">Al Qusais</div>
-      <div class="zone" draggable="true" id="Deira">Deira</div>
-      <div class="zone" draggable="true" id="Ajman">Ajman</div>
-      <div class="zone" draggable="true" id="SharjahSanayia">Sharjah-Sanayia</div>
+<!-- Login overlay -->
+<div id="loginOverlay" style="display:flex">
+  <div id="loginBox" role="dialog" aria-modal="true">
+    <h3>Sign in — Dispatch Controller</h3>
+    <div class="login-row">
+      <label class="small-muted">Username</label>
+      <input id="loginUser" placeholder="Username" />
     </div>
-
-    <div class="dispatch-bays">
-      <div class="bay" id="bay4"><h2>Dispatch Bay 4</h2></div>
-      <div class="bay" id="bay3"><h2>Dispatch Bay 3</h2></div>
-      <div class="bay" id="bay2"><h2>Dispatch Bay 2</h2></div>
-      <div class="bay" id="bay1"><h2>Dispatch Bay 1</h2></div>
+    <div class="login-row">
+      <label class="small-muted">Password</label>
+      <input id="loginPass" type="password" placeholder="Password" />
     </div>
-
-    <div class="dispatched-zones" id="dispatchedZones">
-      <h2>Dispatched Zones</h2>
+    <div class="login-row" style="flex-direction:row;align-items:center;justify-content:space-between">
+      <label style="display:flex;align-items:center;gap:8px">
+        <input id="rememberChk" type="checkbox" />
+        <span class="login-small">Remember (saved for this tab)</span>
+      </label>
+      <span class="login-small login-link" id="clearSaved" title="Clear saved credentials">Clear saved</span>
+    </div>
+    <div class="login-actions">
+      <div class="left">
+        <!-- intentionally left blank (no default hint shown) -->
+      </div>
+      <div>
+        <button id="loginBtn">Sign in</button>
+      </div>
     </div>
   </div>
+</div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-analytics.js";
-    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
+<div class="container" style="display:none">
+  <div class="top-actions">
+    <div id="downloadBtn" class="action-btn" title="Download CSV">📊</div>
+    <div id="resetBtn" class="action-btn" title="Reset all to pending">🔄</div>
+    <div id="editToggleBtn" class="action-btn" title="Toggle edit mode">✏️</div>
+  </div>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
-      authDomain: "dispatchsystem-23f47.firebaseapp.com",
-      databaseURL: "https://dispatchsystem-23f47-default-rtdb.firebaseio.com",
-      projectId: "dispatchsystem-23f47",
-      storageBucket: "dispatchsystem-23f47.firebasestorage.app",
-      messagingSenderId: "131590857859",
-      appId: "1:131590857859:web:5959b6d9d9655fdd0ba7b6",
-      measurementId: "G-49GJE4J123"
-    };
+  <div class="pending-controls">
+    <div id="addBtn" class="add-zone-btn" title="Add Zone">➕</div>
+  </div>
 
-    const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
-    const db = getDatabase(app);
+  <div class="pending-zones" id="pendingZones">
+    <div class="zone" draggable="true" id="Fujairah"><span class="name">Fujairah</span></div>
+    <div class="zone" draggable="true" id="RasAlKhaimah"><span class="name">Ras Al Khaimah</span></div>
+    <div class="zone" draggable="true" id="JabalAli"><span class="name">Jabal Ali</span></div>
+    <div class="zone" draggable="true" id="AlQuoz2"><span class="name">Al Quoz 2</span></div>
+    <div class="zone" draggable="true" id="AlQuoz1"><span class="name">Al Quoz 1</span></div>
+    <div class="zone" draggable="true" id="Mirdiff"><span class="name">Mirdiff</span></div>
+    <div class="zone" draggable="true" id="BurDubai"><span class="name">Bur Dubai</span></div>
+    <div class="zone" draggable="true" id="SharjahBuhairah"><span class="name">Sharjah-Buhairah</span></div>
+    <div class="zone" draggable="true" id="Jumeirah"><span class="name">Jumeirah</span></div>
+    <div class="zone" draggable="true" id="AlQusais"><span class="name">Al Qusais</span></div>
+    <div class="zone" draggable="true" id="Deira"><span class="name">Deira</span></div>
+    <div class="zone" draggable="true" id="Ajman"><span class="name">Ajman</span></div>
+    <div class="zone" draggable="true" id="SharjahSanayia"><span class="name">Sharjah-Sanayia</span></div>
+  </div>
 
-    const zones = document.querySelectorAll('.zone');
-    const bays = document.querySelectorAll('.bay');
-    const dispatchedArea = document.getElementById('dispatchedZones');
-    const pendingArea = document.getElementById('pendingZones');
+  <div class="dispatch-bays">
+    <div class="bay" id="bay4"><h2>Dispatch Bay 4</h2></div>
+    <div class="bay" id="bay3"><h2>Dispatch Bay 3</h2></div>
+    <div class="bay" id="bay2"><h2>Dispatch Bay 2</h2></div>
+    <div class="bay" id="bay1"><h2>Dispatch Bay 1</h2></div>
+  </div>
 
-    // Drag & Drop
-    zones.forEach(zone => {
-      zone.addEventListener('dragstart', e => {
-        e.dataTransfer.setData('text/plain', zone.id);
-        setTimeout(() => zone.style.display = 'none', 0);
-      });
-      zone.addEventListener('dragend', () => zone.style.display = 'block');
-    });
+  <div class="dispatched-zones" id="dispatchedZones"><h2>Dispatched Zones</h2></div>
+</div>
 
-    [...bays, dispatchedArea, pendingArea].forEach(area => {
-      area.addEventListener('dragover', e => e.preventDefault());
-      area.addEventListener('drop', e => {
-        e.preventDefault();
-        const zoneId = e.dataTransfer.getData('text/plain');
-        const zone = document.getElementById(zoneId);
-        if (!zone) return;
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
+import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
 
-        let newStatus;
-        if (area.classList.contains('bay')) newStatus = 'in-gate';
-        else if (area.id === 'dispatchedZones') newStatus = 'dispatched';
-        else if (area.id === 'pendingZones') newStatus = 'pending';
+const firebaseConfig = {
+  apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
+  authDomain: "dispatchsystem-23f47.firebaseapp.com",
+  databaseURL: "https://dispatchsystem-23f47-default-rtdb.firebaseio.com",
+  projectId: "dispatchsystem-23f47",
+  storageBucket: "dispatchsystem-23f47.firebasestorage.app",
+  messagingSenderId: "131590857859",
+  appId: "1:131590857859:web:5959b6d9d9655fdd0ba7b6",
+  measurementId: "G-49GJE4J123"
+};
 
-        moveZone(zone, area);
-        updateZoneInFirebase(zone.id, newStatus, area.id);
-      });
-    });
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-    function moveZone(zone, targetArea) {
-      if (zone.dataset.interval) { clearInterval(zone.dataset.interval); delete zone.dataset.interval; }
-      zone.classList.remove('in-gate', 'dispatched', 'waiting');
-      const oldTimer = zone.querySelector('.timer'); if(oldTimer) oldTimer.remove();
-      const oldDispatch = zone.querySelector('.dispatched-time'); if(oldDispatch) oldDispatch.remove();
-      targetArea.appendChild(zone);
-      if (targetArea.classList.contains('bay')) zone.classList.add('in-gate');
-      else if (targetArea.id === 'dispatchedZones') zone.classList.add('dispatched');
-      else if (targetArea.id === 'pendingZones') zone.classList.add('waiting');
-    }
+const loginOverlay = document.getElementById('loginOverlay');
+const loginBox = document.getElementById('loginBox');
+const loginBtn = document.getElementById('loginBtn');
+const loginUser = document.getElementById('loginUser');
+const loginPass = document.getElementById('loginPass');
+const rememberChk = document.getElementById('rememberChk');
+const clearSaved = document.getElementById('clearSaved');
 
-    function updateZoneInFirebase(zoneId, status, areaId) {
-      const now = Date.now();
-      const data = { status };
-      if (status === 'in-gate') { data.startTime = now; data.bayId = areaId; }
-      if (status === 'dispatched') data.dispatchedTime = now;
-      set(ref(db, 'zones/' + zoneId), data);
-    }
+const containerEl = document.querySelector('.container');
+const pendingArea = document.getElementById('pendingZones');
+const dispatchedArea = document.getElementById('dispatchedZones');
+const bays = document.querySelectorAll('.bay');
+const addBtn = document.getElementById('addBtn');
+const editToggleBtn = document.getElementById('editToggleBtn');
+const resetBtn = document.getElementById('resetBtn');
+const downloadBtn = document.getElementById('downloadBtn');
 
-    // Listen for real-time updates
-    const zonesRef = ref(db, 'zones/');
-    onValue(zonesRef, snapshot => {
-      const zonesData = snapshot.val();
-      if (!zonesData) return;
-      for (const zoneId in zonesData) {
-        const zone = document.getElementById(zoneId);
-        if (!zone) continue;
+let editMode = false;
+let appStarted = false;
 
-        const { status, startTime, dispatchedTime, bayId } = zonesData[zoneId];
+/* ---------------------------
+   AUTH: localStorage-based remember
+   - Inputs are EMPTY by default (no prefill)
+   - If user previously checked "Remember" we prefill the inputs but DO NOT auto-login
+   - Clear saved removes saved credentials
+   --------------------------- */
+function saveCredentials(username, password) {
+  try { localStorage.setItem('dispatch_credentials', JSON.stringify({ username, password })); } catch(e){}
+}
+function clearSavedCredentials() {
+  try { localStorage.removeItem('dispatch_credentials'); } catch(e){}
+}
+function getSavedCredentials() {
+  try { const s = localStorage.getItem('dispatch_credentials'); return s ? JSON.parse(s) : null; } catch(e){ return null; }
+}
 
-        if (status === 'pending') pendingArea.appendChild(zone);
-        else if (status === 'in-gate') {
-          const bay = document.getElementById(bayId) || document.querySelector('.dispatch-bays .bay');
-          bay.appendChild(zone);
-          if (startTime) startTimer(zone, startTime);
-        } else if (status === 'dispatched') {
-          dispatchedArea.appendChild(zone);
-          if (dispatchedTime) showDispatchedTime(zone, dispatchedTime);
-        }
+function showAppAndHideLogin() {
+  loginOverlay.style.display = 'none';
+  containerEl.style.display = '';
+  startApp(); // initialize listeners and firebase subscriptions
+}
+
+function showLogin() {
+  loginOverlay.style.display = 'flex';
+  containerEl.style.display = 'none';
+}
+
+/* On load: if saved credentials exist, PREFILL the inputs but DO NOT auto-login */
+(function initAuth() {
+  const saved = getSavedCredentials();
+  if (saved && saved.username && saved.password) {
+    // prefill, but don't auto sign-in
+    loginUser.value = saved.username;
+    loginPass.value = saved.password;
+    rememberChk.checked = true;
+  } else {
+    // ensure inputs start empty
+    loginUser.value = '';
+    loginPass.value = '';
+    rememberChk.checked = false;
+  }
+  showLogin();
+})();
+
+clearSaved.addEventListener('click', () => {
+  clearSavedCredentials();
+  rememberChk.checked = false;
+  loginUser.value = '';
+  loginPass.value = '';
+  alert('Saved credentials cleared.');
+});
+
+loginBtn.addEventListener('click', () => {
+  const u = (loginUser.value || '').trim();
+  const p = (loginPass.value || '').trim();
+  // Simple local check: only allow admin / 0000 as requested.
+  if (u === 'admin' && p === '0000') {
+    if (rememberChk.checked) saveCredentials(u,p); else clearSavedCredentials();
+    showAppAndHideLogin();
+  } else {
+    alert('Invalid credentials. Use username: admin, password: 0000');
+  }
+});
+
+/* ---------------------------
+   Sequence logic (reworked)
+   - assignSequenceFirebase: runTransaction on meta/nextSequence (lastAssigned -> increment & return)
+   - freeSequenceFirebase: runTransaction on /zones to remove the number and shift higher numbers down by 1,
+     then update meta/nextSequence to the new lastAssigned.
+   --------------------------- */
+
+async function assignSequenceFirebase(zoneId) {
+  // Atomically increment lastAssigned sequence number and return it
+  const tx = await runTransaction(ref(db, 'meta/nextSequence'), (cur) => {
+    // cur stores LAST assigned number in this scheme (0 or null means none assigned yet)
+    if (cur == null) return 1;
+    return Number(cur) + 1;
+  });
+  const assigned = tx.snapshot.val();
+  if (assigned != null) {
+    await update(ref(db, 'zones/' + zoneId), { sequenceNumber: assigned });
+  }
+  return assigned;
+}
+
+async function freeSequenceFirebase(zoneId) {
+  // read current sequence for this zone
+  const snap = await get(ref(db, 'zones/' + zoneId + '/sequenceNumber'));
+  if (!snap.exists()) return;
+  const num = snap.val();
+  if (num == null) return;
+
+  const freedNum = Number(num);
+  if (isNaN(freedNum)) return;
+
+  // Atomically update all zones: remove this zone's sequence, and decrement all sequenceNumbers > freedNum
+  const txZones = await runTransaction(ref(db, 'zones'), (cur) => {
+    if (!cur) return cur;
+    // mutate cur in place
+    for (const k of Object.keys(cur)) {
+      if (!cur[k]) continue;
+      const s = cur[k].sequenceNumber;
+      if (s == null) continue;
+      const sNum = Number(s);
+      if (k === zoneId) {
+        cur[k].sequenceNumber = null;
+      } else if (sNum > freedNum) {
+        cur[k].sequenceNumber = sNum - 1;
       }
+    }
+    return cur;
+  });
+
+  if (!txZones.committed) {
+    // if transaction didn't commit (rare), bail out
+    return;
+  }
+
+  // compute new max assigned sequence number
+  const updatedZones = txZones.snapshot.val() || {};
+  let maxAssigned = 0;
+  for (const k in updatedZones) {
+    const v = updatedZones[k];
+    if (!v) continue;
+    const s = v.sequenceNumber;
+    if (s != null) {
+      const n = Number(s);
+      if (!isNaN(n) && n > maxAssigned) maxAssigned = n;
+    }
+  }
+
+  // Set meta/nextSequence to the lastAssigned (maxAssigned). We use a transaction to avoid races.
+  await runTransaction(ref(db, 'meta/nextSequence'), (cur) => {
+    // set to maxAssigned (last assigned)
+    return Number(maxAssigned);
+  });
+
+  // Clear any legacy freeNumbers array if present (keeps DB tidy)
+  try { await set(ref(db, 'meta/freeNumbers'), []); } catch (e){/* ignore */ }
+}
+
+/* ---------------------------
+   UI initialization functions (kept same behavior, only small wiring adjustments)
+   --------------------------- */
+
+function initZone(zone) {
+  if (zone._inited) return;
+  zone._inited = true;
+
+  if (!zone.querySelector('.name')) {
+    const n = document.createElement('span'); n.className = 'name'; n.textContent = zone.id; zone.appendChild(n);
+  }
+  if (!zone.querySelector('.seq-badge')) {
+    const sb = document.createElement('div'); sb.className = 'seq-badge'; zone.appendChild(sb);
+  }
+  if (!zone.querySelector('.minus-dot')) {
+    const md = document.createElement('div'); md.className = 'minus-dot'; md.textContent = '–';
+    md.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!editMode) return;
+      if (!confirm('Delete zone "' + (zone.querySelector('.name')?.textContent || zone.id) + '"?')) return;
+      await freeSequenceFirebase(zone.id);
+      await update(ref(db, 'zones/' + zone.id), { deleted: true });
+      zone.remove();
     });
+    zone.appendChild(md);
+  }
+  if (!zone.querySelector('.timer')) {
+    const t = document.createElement('span'); t.className = 'timer'; t.style.display = 'none'; zone.appendChild(t);
+  }
+  if (!zone.querySelector('.dispatched-time')) {
+    const d = document.createElement('span'); d.className = 'dispatched-time'; d.style.display = 'none'; zone.appendChild(d);
+  }
 
-    function startTimer(zone, startTime) {
-      if (zone.dataset.interval) clearInterval(zone.dataset.interval);
-      const timerDisplay = zone.querySelector('.timer') || document.createElement('span');
-      timerDisplay.classList.add('timer');
-      if (!zone.contains(timerDisplay)) zone.appendChild(timerDisplay);
-      const interval = setInterval(() => {
-        const diff = Math.floor((Date.now() - startTime) / 1000);
-        const minutes = Math.floor(diff / 60);
-        const seconds = diff % 60;
-        timerDisplay.textContent = `⏱ ${minutes}m ${seconds}s`;
-      }, 1000);
-      zone.dataset.interval = interval;
+  zone.addEventListener('click', (ev) => {
+    if (!editMode) return;
+    ev.stopPropagation();
+    const cur = zone.querySelector('.name')?.textContent || zone.id;
+    const newName = prompt('Rename zone:', cur);
+    if (newName && newName.trim()) update(ref(db, 'zones/' + zone.id), { name: newName.trim() });
+  });
+
+  zone.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', zone.id);
+    setTimeout(() => zone.style.display = 'none', 0);
+  });
+  zone.addEventListener('dragend', () => zone.style.display = '');
+  get(ref(db, 'zones/' + zone.id)).then(snap => {
+    if (!snap.exists()) {
+      set(ref(db, 'zones/' + zone.id), { name: zone.querySelector('.name')?.textContent || zone.id, status: 'pending' });
+    }
+  });
+}
+
+async function handleDrop(zone, area) {
+  const now = Date.now();
+  let status = 'pending';
+  if (area.classList.contains('bay')) status = 'in-gate';
+  else if (area.id === 'dispatchedZones') status = 'dispatched';
+  else status = 'pending';
+
+  if (status === 'in-gate') {
+    const seqSnap = await get(ref(db, 'zones/' + zone.id + '/sequenceNumber'));
+    if (!seqSnap.exists() || seqSnap.val() == null) await assignSequenceFirebase(zone.id);
+    await update(ref(db, 'zones/' + zone.id), { status, startTime: now, bayId: area.id });
+  } else if (status === 'dispatched') {
+    const seqSnap = await get(ref(db, 'zones/' + zone.id + '/sequenceNumber'));
+    if (!seqSnap.exists() || seqSnap.val() == null) await assignSequenceFirebase(zone.id);
+    await update(ref(db, 'zones/' + zone.id), { status, dispatchedTime: now, bayId: area.id });
+  } else {
+    // moving back to pending: free its number and clear times
+    await freeSequenceFirebase(zone.id);
+    await update(ref(db, 'zones/' + zone.id), { status, startTime: null, dispatchedTime: null, bayId: null });
+  }
+}
+
+function enableDrop(area) {
+  area.addEventListener('dragover', e => e.preventDefault());
+  area.addEventListener('drop', async e => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    const zone = document.getElementById(id);
+    if (!zone) return;
+    area.appendChild(zone);
+    await handleDrop(zone, area);
+  });
+}
+bays.forEach(enableDrop);
+enableDrop(dispatchedArea);
+enableDrop(pendingArea);
+
+addBtn.addEventListener('click', () => {
+  const name = prompt('Enter new zone name:');
+  if (!name || !name.trim()) return;
+  const id = name.trim().replace(/\s+/g, '_') + '_' + Date.now();
+  const zone = document.createElement('div');
+  zone.className = 'zone';
+  zone.id = id;
+  zone.draggable = true;
+  zone.innerHTML = `<span class="name">${name.trim()}</span>`;
+  pendingArea.appendChild(zone);
+  initZone(zone);
+  set(ref(db, 'zones/' + id), { name: name.trim(), status: 'pending' });
+});
+
+editToggleBtn.addEventListener('click', () => {
+  editMode = !editMode;
+  document.querySelectorAll('.zone').forEach(z => {
+    if (editMode) z.classList.add('show-minus'); else z.classList.remove('show-minus');
+  });
+  editToggleBtn.style.background = editMode ? 'rgba(255,255,255,0.12)' : '';
+});
+
+resetBtn.addEventListener('click', async () => {
+  if (!confirm('Reset all zones to pending and restart numbering?')) return;
+  await set(ref(db, 'meta/nextSequence'), 0);
+  await set(ref(db, 'meta/freeNumbers'), []);
+  const snap = await get(ref(db, 'zones'));
+  if (!snap.exists()) return;
+  const zonesObj = snap.val();
+  const updates = {};
+  // IMPORTANT: skip zones that have been marked deleted so they remain permanently deleted
+  for (const id in zonesObj) {
+    if (zonesObj[id] && zonesObj[id].deleted) continue; // keep deleted zones deleted
+    updates['zones/' + id + '/status'] = 'pending';
+    updates['zones/' + id + '/startTime'] = null;
+    updates['zones/' + id + '/dispatchedTime'] = null;
+    updates['zones/' + id + '/bayId'] = null;
+    updates['zones/' + id + '/sequenceNumber'] = null;
+    // do NOT unset 'deleted' — deleted stays deleted
+  }
+  await update(ref(db, '/'), updates);
+});
+
+downloadBtn.addEventListener('click', async () => {
+  const snap = await get(ref(db, 'zones'));
+  const obj = snap.exists() ? snap.val() : {};
+  const rows = [['zoneId','name','status','bayId','startTime_ms','startTime_iso','dispatchedTime_ms','dispatchedTime_iso','sequenceNumber']];
+  for (const id in obj) {
+    const z = obj[id] || {};
+    if (z.deleted) continue;
+    const sMs = z.startTime || '';
+    const dMs = z.dispatchedTime || '';
+    const sIso = sMs ? new Date(sMs).toISOString() : '';
+    const dIso = dMs ? new Date(dMs).toISOString() : '';
+    rows.push([`"${id.replace(/"/g,'""')}"`,`"${(z.name||'').replace(/"/g,'""')}"`,`"${(z.status||'').replace(/"/g,'""')}"`,`"${(z.bayId||'').replace(/"/g,'""')}"`,sMs,`"${sIso}"`,dMs,`"${dIso}"`,z.sequenceNumber!=null?z.sequenceNumber:'']);
+  }
+  const csv = rows.map(r => r.join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `dispatch_zones_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+onValue(ref(db, 'zones/'), snapshot => {
+  const data = snapshot.val() || {};
+  for (const id in data) {
+    const zData = data[id] || {};
+    let zone = document.getElementById(id);
+
+    if (zData.deleted) {
+      if (zone && zone.parentNode) zone.remove();
+      continue;
     }
 
-    function showDispatchedTime(zone, dispatchedTime) {
-      const label = zone.querySelector('.dispatched-time') || document.createElement('span');
-      label.classList.add('dispatched-time');
-      label.textContent = `(Dispatched at: ${new Date(dispatchedTime).toLocaleTimeString()})`;
-      if (!zone.contains(label)) zone.appendChild(label);
+    if (!zone) {
+      zone = document.createElement('div');
+      zone.className = 'zone';
+      zone.id = id;
+      zone.draggable = true;
+      zone.innerHTML = `<span class="name">${zData.name || id}</span>`;
+      pendingArea.appendChild(zone);
+    } else {
+      const ns = zone.querySelector('.name');
+      if (ns && zData.name) ns.textContent = zData.name;
+    }
+    initZone(zone);
+
+    if (zData.status === 'pending') {
+      pendingArea.appendChild(zone);
+      zone.querySelector('.timer')?.style && (zone.querySelector('.timer').style.display = 'none');
+      zone.querySelector('.dispatched-time')?.style && (zone.querySelector('.dispatched-time').style.display = 'none');
+    } else if (zData.status === 'in-gate') {
+      const bay = document.getElementById(zData.bayId) || bays[0];
+      bay.appendChild(zone);
+      if (zData.startTime) {
+        const timerEl = zone.querySelector('.timer');
+        timerEl.style.display = 'block';
+        if (zone.dataset.interval) clearInterval(zone.dataset.interval);
+        const startTime = zData.startTime;
+        const interval = setInterval(() => {
+          const diff = Math.floor((Date.now() - startTime) / 1000);
+          const mins = Math.floor(diff / 60), secs = diff % 60;
+          timerEl.textContent = `⏱ ${mins}m ${secs}s`;
+        }, 1000);
+        zone.dataset.interval = interval;
+      }
+    } else if (zData.status === 'dispatched') {
+      dispatchedArea.appendChild(zone);
+      if (zData.dispatchedTime) {
+        const dispEl = zone.querySelector('.dispatched-time');
+        dispEl.style.display = 'block';
+        dispEl.textContent = `(Dispatched at: ${new Date(zData.dispatchedTime).toLocaleTimeString()})`;
+      }
+      if (zone.dataset.interval) { clearInterval(zone.dataset.interval); delete zone.dataset.interval; }
     }
 
-  </script>
+    const badge = zone.querySelector('.seq-badge');
+    if (zData.sequenceNumber != null) {
+      badge.style.display = 'flex';
+      badge.textContent = zData.sequenceNumber;
+    } else {
+      badge.style.display = 'none';
+      badge.textContent = '';
+    }
+  }
+
+  document.querySelectorAll('.zone').forEach(z => {
+    if (data[z.id] && data[z.id].deleted) return;
+    if (!data[z.id]) {
+      const nm = z.querySelector('.name')?.textContent || z.id;
+      set(ref(db, 'zones/' + z.id), { name: nm, status: 'pending' });
+    }
+  });
+
+  document.querySelectorAll('.zone').forEach(z => {
+    if (editMode) z.classList.add('show-minus'); else z.classList.remove('show-minus');
+  });
+});
+</script>
 </body>
 </html>
