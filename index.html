@@ -419,7 +419,6 @@ resetBtn.addEventListener('click', async () => {
     updates['zones/' + id + '/dispatchedTime'] = null;
     updates['zones/' + id + '/bayId'] = null;
     updates['zones/' + id + '/sequenceNumber'] = null;
-    // do NOT unset 'deleted' — deleted stays deleted
   }
   await update(ref(db, '/'), updates);
 });
@@ -427,22 +426,84 @@ resetBtn.addEventListener('click', async () => {
 downloadBtn.addEventListener('click', async () => {
   const snap = await get(ref(db, 'zones'));
   const obj = snap.exists() ? snap.val() : {};
-  const rows = [['zoneId','name','status','bayId','startTime_ms','startTime_iso','dispatchedTime_ms','dispatchedTime_iso','sequenceNumber']];
-  for (const id in obj) {
-    const z = obj[id] || {};
-    if (z.deleted) continue;
-    const sMs = z.startTime || '';
-    const dMs = z.dispatchedTime || '';
-    const sIso = sMs ? new Date(sMs).toISOString() : '';
-    const dIso = dMs ? new Date(dMs).toISOString() : '';
-    rows.push([`"${id.replace(/"/g,'""')}"`,`"${(z.name||'').replace(/"/g,'""')}"`,`"${(z.status||'').replace(/"/g,'""')}"`,`"${(z.bayId||'').replace(/"/g,'""')}"`,sMs,`"${sIso}"`,dMs,`"${dIso}"`,z.sequenceNumber!=null?z.sequenceNumber:'']);
+  const rows = [
+    [
+      'zoneId',
+      'name',
+      'status',
+      'bayId',
+      'inGateStart_iso',
+      'inGateDuration_HH:MM:SS',
+      'dispatchedTime_iso',
+      'dispatchDuration_HH:MM:SS',
+      'sequenceNumber'
+    ]
+  ];
+
+  function msToHms(ms) {
+    if (ms == null) return '';
+    const total = Math.floor(ms / 1000);
+    const hours = Math.floor(total / 3600);
+    const mins = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(hours)}:${pad(mins)}:${pad(secs)}`;
   }
+
+  for (const id in obj) {
+    const z = obj[id];
+    if (!z || z.deleted) continue;
+
+    const name = z.name || '';
+    const status = z.status || '';
+    const bayId = z.bayId || '';
+
+    const inMs = z.startTime != null ? z.startTime : null;
+    const inIso = inMs ? new Date(inMs).toISOString() : '';
+
+    // duration in-gate: if dispatchedTime exists, duration = dispatchedTime - startTime
+    let inGateDur = '';
+    if (z.startTime != null && z.dispatchedTime != null) {
+      inGateDur = msToHms(z.dispatchedTime - z.startTime);
+    }
+
+    const dispMs = z.dispatchedTime != null ? z.dispatchedTime : null;
+    const dispIso = dispMs ? new Date(dispMs).toISOString() : '';
+
+    // dispatch duration: time in-gate to dispatch
+    let dispatchDur = '';
+    if (z.startTime != null && z.dispatchedTime != null) {
+      dispatchDur = msToHms(z.dispatchedTime - z.startTime);
+    }
+
+    const seq = z.sequenceNumber != null ? z.sequenceNumber : '';
+
+    rows.push([
+      `"${id.replace(/"/g, '""')}"`,
+      `"${(name||'').replace(/"/g, '""')}"`,
+      `"${(status||'').replace(/"/g, '""')}"`,
+      `"${(bayId||'').replace(/"/g, '""')}"`,
+      `"${inIso}"`,
+      `"${inGateDur}"`,
+      `"${dispIso}"`,
+      `"${dispatchDur}"`,
+      seq
+    ]);
+  }
+
   const csv = rows.map(r => r.join(',')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+
+  // filename: dispatch_report_YYYY-MM-DD.csv using browser timezone (en-CA yields YYYY-MM-DD)
+  let dateStr = new Date().toLocaleDateString('en-CA');
+  if (!dateStr) dateStr = new Date().toISOString().slice(0,10);
+  dateStr = String(dateStr).replace(/\//g,'-');
+  const filename = `dispatch_report_${dateStr}.csv`;
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `dispatch_zones_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
