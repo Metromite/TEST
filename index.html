@@ -292,17 +292,15 @@ body{
     <div class="bay" id="bay4"><h2>Dispatch Bay 4</h2></div>
     <div class="bay" id="bay3"><h2>Dispatch Bay 3</h2></div>
     <div class="bay" id="bay2"><h2>Dispatch Bay 2</h2></div>
-    <div class="bay" id="bay1"><h2>Dispatch Bay 1</h2></div>
+    <!-- Modified heading for Bay 1: added small secondary text (urgent and government) as requested -->
+    <div class="bay" id="bay1"><h2>Dispatch Bay 1 <small style="display:block;font-size:12px;opacity:.8;margin-top:4px;">urgent · government</small></h2></div>
   </div>
 
   <div class="dispatched-zones" id="dispatchedZones"><h2>Dispatched Zones</h2></div>
 </div>
 
 <script type="module">
-/* ===== Firebase + App logic (UNCHANGED) =====
-   I did not alter any logic — only added responsive styles above.
-   The code below is identical to the previous working file:
-*/
+/* ===== Firebase + App logic (UNCHANGED except CSV export adjustments) ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
 import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
 
@@ -342,10 +340,7 @@ let appStarted = false;
 
 /* ---------------------------
    AUTH: localStorage-based remember
-   - Inputs are EMPTY by default (no prefill)
-   - If user previously checked "Remember" we prefill the inputs but DO NOT auto-login
-   - Clear saved removes saved credentials
-   --------------------------- */
+*/
 function saveCredentials(username, password) {
   try { localStorage.setItem('dispatch_credentials', JSON.stringify({ username, password })); } catch(e){}
 }
@@ -367,16 +362,13 @@ function showLogin() {
   containerEl.style.display = 'none';
 }
 
-/* On load: if saved credentials exist, PREFILL the inputs but DO NOT auto-login */
 (function initAuth() {
   const saved = getSavedCredentials();
   if (saved && saved.username && saved.password) {
-    // prefill, but don't auto sign-in
     loginUser.value = saved.username;
     loginPass.value = saved.password;
     rememberChk.checked = true;
   } else {
-    // ensure inputs start empty
     loginUser.value = '';
     loginPass.value = '';
     rememberChk.checked = false;
@@ -395,7 +387,6 @@ clearSaved.addEventListener('click', () => {
 loginBtn.addEventListener('click', () => {
   const u = (loginUser.value || '').trim();
   const p = (loginPass.value || '').trim();
-  // Simple local check: only allow admin / 0000 as requested.
   if (u === 'admin' && p === '0000') {
     if (rememberChk.checked) saveCredentials(u,p); else clearSavedCredentials();
     showAppAndHideLogin();
@@ -405,16 +396,10 @@ loginBtn.addEventListener('click', () => {
 });
 
 /* ---------------------------
-   Sequence logic (reworked)
-   - assignSequenceFirebase: runTransaction on meta/nextSequence (lastAssigned -> increment & return)
-   - freeSequenceFirebase: runTransaction on /zones to remove the number and shift higher numbers down by 1,
-     then update meta/nextSequence to the new lastAssigned.
-   --------------------------- */
-
+   Sequence logic (unchanged)
+*/
 async function assignSequenceFirebase(zoneId) {
-  // Atomically increment lastAssigned sequence number and return it
   const tx = await runTransaction(ref(db, 'meta/nextSequence'), (cur) => {
-    // cur stores LAST assigned number in this scheme (0 or null means none assigned yet)
     if (cur == null) return 1;
     return Number(cur) + 1;
   });
@@ -426,19 +411,14 @@ async function assignSequenceFirebase(zoneId) {
 }
 
 async function freeSequenceFirebase(zoneId) {
-  // read current sequence for this zone
   const snap = await get(ref(db, 'zones/' + zoneId + '/sequenceNumber'));
   if (!snap.exists()) return;
   const num = snap.val();
   if (num == null) return;
-
   const freedNum = Number(num);
   if (isNaN(freedNum)) return;
-
-  // Atomically update all zones: remove this zone's sequence, and decrement all sequenceNumbers > freedNum
   const txZones = await runTransaction(ref(db, 'zones'), (cur) => {
     if (!cur) return cur;
-    // mutate cur in place
     for (const k of Object.keys(cur)) {
       if (!cur[k]) continue;
       const s = cur[k].sequenceNumber;
@@ -452,13 +432,7 @@ async function freeSequenceFirebase(zoneId) {
     }
     return cur;
   });
-
-  if (!txZones.committed) {
-    // if transaction didn't commit (rare), bail out
-    return;
-  }
-
-  // compute new max assigned sequence number
+  if (!txZones.committed) return;
   const updatedZones = txZones.snapshot.val() || {};
   let maxAssigned = 0;
   for (const k in updatedZones) {
@@ -470,21 +444,15 @@ async function freeSequenceFirebase(zoneId) {
       if (!isNaN(n) && n > maxAssigned) maxAssigned = n;
     }
   }
-
-  // Set meta/nextSequence to the lastAssigned (maxAssigned). We use a transaction to avoid races.
   await runTransaction(ref(db, 'meta/nextSequence'), (cur) => {
-    // set to maxAssigned (last assigned)
     return Number(maxAssigned);
   });
-
-  // Clear any legacy freeNumbers array if present (keeps DB tidy)
-  try { await set(ref(db, 'meta/freeNumbers'), []); } catch (e){/* ignore */ }
+  try { await set(ref(db, 'meta/freeNumbers'), []); } catch (e){}
 }
 
 /* ---------------------------
-   UI initialization functions (kept same behavior, only small wiring adjustments)
-   --------------------------- */
-
+   UI initialization functions (kept same behavior)
+*/
 function initZone(zone) {
   if (zone._inited) return;
   zone._inited = true;
@@ -550,7 +518,6 @@ async function handleDrop(zone, area) {
     if (!seqSnap.exists() || seqSnap.val() == null) await assignSequenceFirebase(zone.id);
     await update(ref(db, 'zones/' + zone.id), { status, dispatchedTime: now, bayId: area.id });
   } else {
-    // moving back to pending: free its number and clear times
     await freeSequenceFirebase(zone.id);
     await update(ref(db, 'zones/' + zone.id), { status, startTime: null, dispatchedTime: null, bayId: null });
   }
@@ -601,9 +568,8 @@ resetBtn.addEventListener('click', async () => {
   if (!snap.exists()) return;
   const zonesObj = snap.val();
   const updates = {};
-  // IMPORTANT: skip zones that have been marked deleted so they remain permanently deleted
   for (const id in zonesObj) {
-    if (zonesObj[id] && zonesObj[id].deleted) continue; // keep deleted zones deleted
+    if (zonesObj[id] && zonesObj[id].deleted) continue;
     updates['zones/' + id + '/status'] = 'pending';
     updates['zones/' + id + '/startTime'] = null;
     updates['zones/' + id + '/dispatchedTime'] = null;
@@ -612,6 +578,12 @@ resetBtn.addEventListener('click', async () => {
   }
   await update(ref(db, '/'), updates);
 });
+
+/* ---------------------------
+   CSV export: adjusted to include UAE (Asia/Dubai) local date/time columns,
+   keep inGateStart_iso and dispatchedTime_iso (UTC), keep inGate duration,
+   REMOVE dispatchDuration_HH:MM:SS column as requested.
+*/
 
 downloadBtn.addEventListener('click', async () => {
   const snap = await get(ref(db, 'zones'));
@@ -623,9 +595,12 @@ downloadBtn.addEventListener('click', async () => {
       'status',
       'bayId',
       'inGateStart_iso',
+      'inGateStart_date_UAE',
+      'inGateStart_time_UAE',
       'inGateDuration_HH:MM:SS',
       'dispatchedTime_iso',
-      'dispatchDuration_HH:MM:SS',
+      'dispatched_date_UAE',
+      'dispatched_time_UAE',
       'sequenceNumber'
     ]
   ];
@@ -640,6 +615,10 @@ downloadBtn.addEventListener('click', async () => {
     return `${pad(hours)}:${pad(mins)}:${pad(secs)}`;
   }
 
+  // Helpers to format date/time in Asia/Dubai
+  const dateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai' }); // YYYY-MM-DD
+  const timeFormatter = new Intl.DateTimeFormat('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Dubai' });
+
   for (const id in obj) {
     const z = obj[id];
     if (!z || z.deleted) continue;
@@ -651,7 +630,6 @@ downloadBtn.addEventListener('click', async () => {
     const inMs = z.startTime != null ? z.startTime : null;
     const inIso = inMs ? new Date(inMs).toISOString() : '';
 
-    // duration in-gate: if dispatchedTime exists, duration = dispatchedTime - startTime
     let inGateDur = '';
     if (z.startTime != null && z.dispatchedTime != null) {
       inGateDur = msToHms(z.dispatchedTime - z.startTime);
@@ -660,10 +638,23 @@ downloadBtn.addEventListener('click', async () => {
     const dispMs = z.dispatchedTime != null ? z.dispatchedTime : null;
     const dispIso = dispMs ? new Date(dispMs).toISOString() : '';
 
-    // dispatch duration: time in-gate to dispatch
-    let dispatchDur = '';
-    if (z.startTime != null && z.dispatchedTime != null) {
-      dispatchDur = msToHms(z.dispatchedTime - z.startTime);
+    // Format UAE-local date/time (separate columns)
+    let inDateUAE = '';
+    let inTimeUAE = '';
+    if (inMs != null) {
+      try {
+        inDateUAE = dateFormatter.format(new Date(inMs));
+        inTimeUAE = timeFormatter.format(new Date(inMs));
+      } catch (e) { inDateUAE = ''; inTimeUAE = ''; }
+    }
+
+    let dispDateUAE = '';
+    let dispTimeUAE = '';
+    if (dispMs != null) {
+      try {
+        dispDateUAE = dateFormatter.format(new Date(dispMs));
+        dispTimeUAE = timeFormatter.format(new Date(dispMs));
+      } catch (e) { dispDateUAE = ''; dispTimeUAE = ''; }
     }
 
     const seq = z.sequenceNumber != null ? z.sequenceNumber : '';
@@ -674,9 +665,12 @@ downloadBtn.addEventListener('click', async () => {
       `"${(status||'').replace(/"/g, '""')}"`,
       `"${(bayId||'').replace(/"/g, '""')}"`,
       `"${inIso}"`,
+      `"${inDateUAE}"`,
+      `"${inTimeUAE}"`,
       `"${inGateDur}"`,
       `"${dispIso}"`,
-      `"${dispatchDur}"`,
+      `"${dispDateUAE}"`,
+      `"${dispTimeUAE}"`,
       seq
     ]);
   }
@@ -684,7 +678,6 @@ downloadBtn.addEventListener('click', async () => {
   const csv = rows.map(r => r.join(',')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
 
-  // filename: dispatch_report_YYYY-MM-DD.csv using browser timezone (en-CA yields YYYY-MM-DD)
   let dateStr = new Date().toLocaleDateString('en-CA');
   if (!dateStr) dateStr = new Date().toISOString().slice(0,10);
   dateStr = String(dateStr).replace(/\//g,'-');
@@ -775,6 +768,9 @@ onValue(ref(db, 'zones/'), snapshot => {
     if (editMode) z.classList.add('show-minus'); else z.classList.remove('show-minus');
   });
 });
+
+// startApp placeholder to avoid errors if called earlier
+function startApp() { /* real subscriptions already wired by onValue above */ }
 </script>
 </body>
 </html>
