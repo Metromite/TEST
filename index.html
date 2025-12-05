@@ -322,39 +322,190 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-/* ===== Firebase Connection Management - Keeps connection alive across refreshes ===== */
-// Explicitly go online to ensure connection is established
+/* ===== Firebase Connection Management - Cross-browser compatible (Safari + Chrome + others) ===== */
+let connectionRetryAttempts = 0;
+const MAX_RETRY_ATTEMPTS = 5;
+let reconnectTimer = null;
+let connectionCheckInterval = null;
+let isManualReconnect = false;
+
+// Exponential backoff for reconnection
+function getReconnectDelay(attempt) {
+  const baseDelay = 1000; // 1 second
+  const maxDelay = 30000; // 30 seconds
+  const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  return delay + Math.random() * 1000; // Add jitter
+}
+
+// Robust reconnection function with exponential backoff
+function attemptReconnect() {
+  if (isManualReconnect) return;
+  
+  if (connectionRetryAttempts >= MAX_RETRY_ATTEMPTS) {
+    console.warn('Firebase: Max reconnection attempts reached. Resetting...');
+    connectionRetryAttempts = 0;
+  }
+  
+  const delay = getReconnectDelay(connectionRetryAttempts);
+  connectionRetryAttempts++;
+  
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  
+  reconnectTimer = setTimeout(() => {
+    console.log(`Firebase: Attempting reconnection (attempt ${connectionRetryAttempts})...`);
+    isManualReconnect = true;
+    
+    try {
+      goOnline(db);
+      
+      // Verify connection after a short delay
+      setTimeout(() => {
+        isManualReconnect = false;
+      }, 2000);
+    } catch (error) {
+      console.error('Firebase: Reconnection error:', error);
+      isManualReconnect = false;
+      attemptReconnect();
+    }
+  }, delay);
+}
+
+// Monitor connection state with robust handling
+const connectedRef = ref(db, '.info/connected');
+let connectionStateListener = null;
+
+function setupConnectionMonitor() {
+  // Clean up existing listener if any (onValue returns unsubscribe function)
+  if (connectionStateListener && typeof connectionStateListener === 'function') {
+    connectionStateListener();
+    connectionStateListener = null;
+  }
+  
+  connectionStateListener = onValue(connectedRef, (snapshot) => {
+    const isConnected = snapshot.val();
+    
+    if (isConnected === true) {
+      console.log('Firebase: Connected successfully');
+      connectionRetryAttempts = 0; // Reset on successful connection
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      isManualReconnect = false;
+    } else if (isConnected === false) {
+      console.log('Firebase: Disconnected detected');
+      if (!isManualReconnect) {
+        attemptReconnect();
+      }
+    }
+  }, { onlyOnce: false });
+}
+
+// Initialize connection monitoring (only once on initial load)
+if (!connectionStateListener) {
+  setupConnectionMonitor();
+}
+
+// Explicitly go online on initialization
 goOnline(db);
 
-// Monitor connection state and maintain connection
-const connectedRef = ref(db, '.info/connected');
-onValue(connectedRef, (snapshot) => {
-  const isConnected = snapshot.val();
-  if (isConnected === true) {
-    console.log('Firebase: Connected');
-  } else if (isConnected === false) {
-    console.log('Firebase: Disconnected - attempting reconnection...');
-    // Force reconnection
-    goOnline(db);
+// Handle Safari's pageshow event (fires after page restore from cache/back-forward)
+window.addEventListener('pageshow', (event) => {
+  // event.persisted is true if page was loaded from cache
+  if (event.persisted) {
+    console.log('Firebase: Page restored from cache - reinitializing connection');
+    // Reset connection state
+    connectionRetryAttempts = 0;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    // Small delay to ensure page is fully loaded (Safari needs this)
+    setTimeout(() => {
+      goOnline(db);
+      // Only re-setup monitor if it's been cleared
+      if (!connectionStateListener) {
+        setupConnectionMonitor();
+      }
+    }, 150);
+  } else {
+    // Regular page load (not from cache)
+    setTimeout(() => {
+      goOnline(db);
+    }, 50);
   }
-}, { onlyOnce: false });
+});
 
-// Handle page visibility changes to maintain connection
+// Handle page visibility changes (works across all browsers)
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
-    goOnline(db);
+    console.log('Firebase: Page became visible - ensuring connection');
+    // Small delay for Safari's delayed visibility handling
+    setTimeout(() => {
+      goOnline(db);
+    }, 50);
   }
+});
+
+// Handle online/offline events (crucial for Safari)
+window.addEventListener('online', () => {
+  console.log('Firebase: Network came online - reconnecting');
+  connectionRetryAttempts = 0;
+  setTimeout(() => {
+    goOnline(db);
+  }, 100);
+});
+
+window.addEventListener('offline', () => {
+  console.log('Firebase: Network went offline');
 });
 
 // Ensure connection on page load/refresh
 window.addEventListener('load', () => {
-  goOnline(db);
+  console.log('Firebase: Page loaded - initializing connection');
+  setTimeout(() => {
+    goOnline(db);
+  }, 100);
 });
 
-// Periodic connection check (every 30 seconds) to ensure connection stays alive
-setInterval(() => {
+// Handle DOMContentLoaded for faster initialization
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    goOnline(db);
+  });
+} else {
+  // DOM already loaded
   goOnline(db);
-}, 30000);
+}
+
+// Periodic connection health check (longer interval to avoid Safari issues)
+connectionCheckInterval = setInterval(() => {
+  // Check connection state without forcing reconnection if already connected
+  get(ref(db, '.info/connected')).then((snapshot) => {
+    const isConnected = snapshot.val();
+    if (!isConnected) {
+      console.log('Firebase: Periodic check detected disconnect - reconnecting');
+      goOnline(db);
+    }
+  }).catch((error) => {
+    console.error('Firebase: Connection check error:', error);
+    goOnline(db);
+  });
+}, 60000); // Check every 60 seconds (less aggressive than before)
+
+// Handle beforeunload to clean up (Safari-specific)
+window.addEventListener('beforeunload', () => {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (connectionCheckInterval) clearInterval(connectionCheckInterval);
+});
+
+// Safari-specific: Handle pagehide event
+window.addEventListener('pagehide', (event) => {
+  if (event.persisted) {
+    // Page is being cached by Safari
+    console.log('Firebase: Page being cached by browser');
+  }
+});
 
 const loginOverlay = document.getElementById('loginOverlay');
 const loginBox = document.getElementById('loginBox');
