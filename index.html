@@ -306,7 +306,7 @@ body{
 <script type="module">
 /* ===== Firebase + App logic (UNCHANGED except CSV export adjustments) ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
-import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
+import { getDatabase, ref, set, onValue, update, remove, runTransaction, get, goOnline } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
@@ -321,6 +321,40 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+
+/* ===== Firebase Connection Management - Keeps connection alive across refreshes ===== */
+// Explicitly go online to ensure connection is established
+goOnline(db);
+
+// Monitor connection state and maintain connection
+const connectedRef = ref(db, '.info/connected');
+onValue(connectedRef, (snapshot) => {
+  const isConnected = snapshot.val();
+  if (isConnected === true) {
+    console.log('Firebase: Connected');
+  } else if (isConnected === false) {
+    console.log('Firebase: Disconnected - attempting reconnection...');
+    // Force reconnection
+    goOnline(db);
+  }
+}, { onlyOnce: false });
+
+// Handle page visibility changes to maintain connection
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    goOnline(db);
+  }
+});
+
+// Ensure connection on page load/refresh
+window.addEventListener('load', () => {
+  goOnline(db);
+});
+
+// Periodic connection check (every 30 seconds) to ensure connection stays alive
+setInterval(() => {
+  goOnline(db);
+}, 30000);
 
 const loginOverlay = document.getElementById('loginOverlay');
 const loginBox = document.getElementById('loginBox');
