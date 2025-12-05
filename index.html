@@ -232,19 +232,6 @@ body{
 </style>
 </head>
 <body>
-<script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-      for(let registration of registrations) {
-        registration.unregister();
-      }
-    });
-  }
-  // force browser to reload page bypassing cache if needed
-  if (performance.getEntriesByType("navigation")[0].type === "reload") {
-    location.reload(true);
-  }
-</script>
 <!-- Login overlay -->
 <div id="loginOverlay" style="display:flex">
   <div id="loginBox" role="dialog" aria-modal="true">
@@ -788,4 +775,5 @@ function startApp() { /* real subscriptions already wired by onValue above */ }
 </script>
 </body>
 </html>
+
 
