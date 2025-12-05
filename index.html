@@ -2,9 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta http-equiv="Expires" content="0" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Dispatch Controller — Glass UI</title>
 <style>
@@ -306,7 +303,7 @@ body{
 <script type="module">
 /* ===== Firebase + App logic (UNCHANGED except CSV export adjustments) ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
-import { getDatabase, ref, set, onValue, update, remove, runTransaction, get, goOnline } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
+import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
@@ -321,53 +318,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-
-/* ===== Firebase Connection Management - Simple and non-intrusive ===== */
-// Ensure Firebase is online - simple approach that doesn't interfere
-goOnline(db);
-
-// Monitor connection state
-const connectedRef = ref(db, '.info/connected');
-onValue(connectedRef, (snapshot) => {
-  const isConnected = snapshot.val();
-  if (isConnected === true) {
-    console.log('Firebase: Connected');
-  } else {
-    console.log('Firebase: Disconnected - will reconnect automatically');
-    goOnline(db);
-  }
-}, { onlyOnce: false });
-
-// Handle page refresh - ensure connection after refresh (critical for Safari)
-window.addEventListener('pageshow', (event) => {
-  // Reconnect after page refresh or cache restore
-  setTimeout(() => {
-    goOnline(db);
-  }, 100);
-  
-  // Additional reconnect attempt for Safari cache restoration
-  if (event.persisted) {
-    setTimeout(() => {
-      goOnline(db);
-    }, 500);
-  }
-});
-
-// Handle visibility changes
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    setTimeout(() => {
-      goOnline(db);
-    }, 100);
-  }
-});
-
-// Handle network online event
-window.addEventListener('online', () => {
-  setTimeout(() => {
-    goOnline(db);
-  }, 100);
-});
 
 const loginOverlay = document.getElementById('loginOverlay');
 const loginBox = document.getElementById('loginBox');
@@ -825,6 +775,3 @@ function startApp() { /* real subscriptions already wired by onValue above */ }
 </script>
 </body>
 </html>
-
-
-
