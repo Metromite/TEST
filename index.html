@@ -308,20 +308,27 @@ body{
 
 // Global error handler to catch module loading failures
 window.addEventListener('error', (event) => {
-  if (event.filename && event.filename.includes('firebase')) {
-    console.error('Firebase module loading error:', event.error);
-    const msg = 'Failed to load Firebase modules. This is usually caused by browser caching.\n\nPlease:\n1. Hard refresh (Ctrl+Shift+R or Cmd+Shift+R)\n2. Clear browser cache\n3. Try incognito mode';
-    setTimeout(() => alert(msg), 100);
+  console.error('Global error:', event.error, event.filename);
+  if (event.filename && (event.filename.includes('firebase') || event.filename.includes('index-8'))) {
+    console.error('Module loading error:', event.error);
+    // Don't show alert immediately - try to recover first
+    if (event.error && event.error.message && event.error.message.includes('Failed to fetch')) {
+      console.warn('Network error detected, will retry...');
+      // The page will need a manual refresh, but don't spam alerts
+    }
   }
-});
+}, true);
 
 // Catch unhandled promise rejections
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
-  if (event.reason && (event.reason.message && event.reason.message.includes('firebase') || event.reason.code)) {
-    setTimeout(() => {
-      alert('Firebase error detected. Please clear your browser cache and hard refresh the page.');
-    }, 100);
+  // Prevent default browser error handling for known issues
+  if (event.reason && typeof event.reason === 'object') {
+    const msg = event.reason.message || String(event.reason);
+    if (msg.includes('firebase') || msg.includes('Failed to fetch') || event.reason.code) {
+      console.warn('Firebase-related error caught:', event.reason);
+      event.preventDefault(); // Prevent console error spam
+    }
   }
 });
 
@@ -352,8 +359,8 @@ try {
   db = getDatabase(app);
 } catch (error) {
   console.error('Firebase initialization error:', error);
-  alert('Failed to initialize Firebase. Please clear your browser cache and refresh the page.');
-  throw error;
+  // Don't show alert immediately - let the app try to continue
+  // User will see error when trying to use features
 }
 
 // Wait for DOM to be fully ready
@@ -408,13 +415,27 @@ let appStarted = false;
    AUTH: localStorage-based remember
 */
 function saveCredentials(username, password) {
-  try { localStorage.setItem('dispatch_credentials', JSON.stringify({ username, password })); } catch(e){}
+  try { 
+    localStorage.setItem('dispatch_credentials', JSON.stringify({ username, password })); 
+  } catch(e){
+    console.warn('localStorage not available:', e);
+  }
 }
 function clearSavedCredentials() {
-  try { localStorage.removeItem('dispatch_credentials'); } catch(e){}
+  try { 
+    localStorage.removeItem('dispatch_credentials'); 
+  } catch(e){
+    console.warn('localStorage not available:', e);
+  }
 }
 function getSavedCredentials() {
-  try { const s = localStorage.getItem('dispatch_credentials'); return s ? JSON.parse(s) : null; } catch(e){ return null; }
+  try { 
+    const s = localStorage.getItem('dispatch_credentials'); 
+    return s ? JSON.parse(s) : null; 
+  } catch(e){ 
+    console.warn('localStorage not available:', e);
+    return null; 
+  }
 }
 
 function showAppAndHideLogin() {
@@ -430,10 +451,33 @@ function showLogin() {
 
 (function initAuth() {
   const saved = getSavedCredentials();
+  // Check if user was previously logged in (session persistence)
+  const wasLoggedIn = sessionStorage.getItem('dispatch_logged_in') === 'true';
+  
   if (saved && saved.username && saved.password) {
     loginUser.value = saved.username;
     loginPass.value = saved.password;
     rememberChk.checked = true;
+    
+    // Auto-login if credentials are saved and user was previously logged in
+    // Wait a bit to ensure Firebase is initialized
+    if (wasLoggedIn && saved.username === 'admin' && saved.password === '0000') {
+      // Wait for Firebase to be ready, then auto-login
+      const checkFirebase = setInterval(() => {
+        if (db) {
+          clearInterval(checkFirebase);
+          showAppAndHideLogin();
+        }
+      }, 100);
+      // Timeout after 3 seconds - if Firebase doesn't load, show login
+      setTimeout(() => {
+        clearInterval(checkFirebase);
+        if (!db) {
+          showLogin();
+        }
+      }, 3000);
+      return;
+    }
   } else {
     loginUser.value = '';
     loginPass.value = '';
@@ -444,6 +488,9 @@ function showLogin() {
 
 clearSaved.addEventListener('click', () => {
   clearSavedCredentials();
+  try {
+    sessionStorage.removeItem('dispatch_logged_in');
+  } catch(e) {}
   rememberChk.checked = false;
   loginUser.value = '';
   loginPass.value = '';
@@ -454,7 +501,18 @@ loginBtn.addEventListener('click', () => {
   const u = (loginUser.value || '').trim();
   const p = (loginPass.value || '').trim();
   if (u === 'admin' && p === '0000') {
-    if (rememberChk.checked) saveCredentials(u,p); else clearSavedCredentials();
+    if (rememberChk.checked) {
+      saveCredentials(u,p);
+    } else {
+      clearSavedCredentials();
+    }
+    // Mark as logged in for session persistence
+    try {
+      sessionStorage.setItem('dispatch_logged_in', 'true');
+    } catch(e) {
+      console.warn('SessionStorage not available (may be blocked by privacy settings):', e);
+      // Continue anyway - the app should still work
+    }
     showAppAndHideLogin();
   } else {
     alert('Invalid credentials. Use username: admin, password: 0000');
@@ -465,6 +523,10 @@ loginBtn.addEventListener('click', () => {
    Sequence logic (unchanged)
 */
 async function assignSequenceFirebase(zoneId) {
+  if (!db) {
+    console.error('Firebase not initialized');
+    return null;
+  }
   const tx = await runTransaction(ref(db, 'meta/nextSequence'), (cur) => {
     if (cur == null) return 1;
     return Number(cur) + 1;
@@ -477,6 +539,10 @@ async function assignSequenceFirebase(zoneId) {
 }
 
 async function freeSequenceFirebase(zoneId) {
+  if (!db) {
+    console.error('Firebase not initialized');
+    return;
+  }
   const snap = await get(ref(db, 'zones/' + zoneId + '/sequenceNumber'));
   if (!snap.exists()) return;
   const num = snap.val();
@@ -535,6 +601,10 @@ function initZone(zone) {
       e.stopPropagation();
       if (!editMode) return;
       if (!confirm('Delete zone "' + (zone.querySelector('.name')?.textContent || zone.id) + '"?')) return;
+      if (!db) {
+        alert('Database not ready. Please refresh the page.');
+        return;
+      }
       await freeSequenceFirebase(zone.id);
       await update(ref(db, 'zones/' + zone.id), { deleted: true });
       zone.remove();
@@ -553,7 +623,9 @@ function initZone(zone) {
     ev.stopPropagation();
     const cur = zone.querySelector('.name')?.textContent || zone.id;
     const newName = prompt('Rename zone:', cur);
-    if (newName && newName.trim()) update(ref(db, 'zones/' + zone.id), { name: newName.trim() });
+    if (newName && newName.trim() && db) {
+      update(ref(db, 'zones/' + zone.id), { name: newName.trim() });
+    }
   });
 
   zone.addEventListener('dragstart', e => {
@@ -561,14 +633,20 @@ function initZone(zone) {
     setTimeout(() => zone.style.display = 'none', 0);
   });
   zone.addEventListener('dragend', () => zone.style.display = '');
-  get(ref(db, 'zones/' + zone.id)).then(snap => {
-    if (!snap.exists()) {
-      set(ref(db, 'zones/' + zone.id), { name: zone.querySelector('.name')?.textContent || zone.id, status: 'pending' });
-    }
-  });
+  if (db) {
+    get(ref(db, 'zones/' + zone.id)).then(snap => {
+      if (!snap.exists()) {
+        set(ref(db, 'zones/' + zone.id), { name: zone.querySelector('.name')?.textContent || zone.id, status: 'pending' });
+      }
+    }).catch(err => console.warn('Error checking zone:', err));
+  }
 }
 
 async function handleDrop(zone, area) {
+  if (!db) {
+    alert('Database not ready. Please refresh the page.');
+    return;
+  }
   const now = Date.now();
   let status = 'pending';
   if (area.classList.contains('bay')) status = 'in-gate';
@@ -605,6 +683,10 @@ enableDrop(dispatchedArea);
 enableDrop(pendingArea);
 
 addBtn.addEventListener('click', () => {
+  if (!db) {
+    alert('Database not ready. Please refresh the page.');
+    return;
+  }
   const name = prompt('Enter new zone name:');
   if (!name || !name.trim()) return;
   const id = name.trim().replace(/\s+/g, '_') + '_' + Date.now();
@@ -628,6 +710,10 @@ editToggleBtn.addEventListener('click', () => {
 
 resetBtn.addEventListener('click', async () => {
   if (!confirm('Reset all zones to pending and restart numbering?')) return;
+  if (!db) {
+    alert('Database not ready. Please refresh the page.');
+    return;
+  }
   await set(ref(db, 'meta/nextSequence'), 0);
   await set(ref(db, 'meta/freeNumbers'), []);
   const snap = await get(ref(db, 'zones'));
@@ -652,6 +738,10 @@ resetBtn.addEventListener('click', async () => {
 */
 
 downloadBtn.addEventListener('click', async () => {
+  if (!db) {
+    alert('Database not ready. Please refresh the page.');
+    return;
+  }
   const snap = await get(ref(db, 'zones'));
   const obj = snap.exists() ? snap.val() : {};
   const rows = [
@@ -759,7 +849,9 @@ downloadBtn.addEventListener('click', async () => {
   URL.revokeObjectURL(url);
 });
 
-onValue(ref(db, 'zones/'), snapshot => {
+// Set up Firebase listener - only if db is initialized
+if (db) {
+  onValue(ref(db, 'zones/'), snapshot => {
   const data = snapshot.val() || {};
   for (const id in data) {
     const zData = data[id] || {};
@@ -822,18 +914,27 @@ onValue(ref(db, 'zones/'), snapshot => {
     }
   }
 
-  document.querySelectorAll('.zone').forEach(z => {
-    if (data[z.id] && data[z.id].deleted) return;
-    if (!data[z.id]) {
-      const nm = z.querySelector('.name')?.textContent || z.id;
-      set(ref(db, 'zones/' + z.id), { name: nm, status: 'pending' });
-    }
-  });
+    document.querySelectorAll('.zone').forEach(z => {
+      if (data[z.id] && data[z.id].deleted) return;
+      if (!data[z.id] && db) {
+        const nm = z.querySelector('.name')?.textContent || z.id;
+        set(ref(db, 'zones/' + z.id), { name: nm, status: 'pending' });
+      }
+    });
 
-  document.querySelectorAll('.zone').forEach(z => {
-    if (editMode) z.classList.add('show-minus'); else z.classList.remove('show-minus');
+    document.querySelectorAll('.zone').forEach(z => {
+      if (editMode) z.classList.add('show-minus'); else z.classList.remove('show-minus');
+    });
   });
-});
+} else {
+  console.error('Firebase database not initialized. Please refresh the page.');
+  // Show error after a delay to allow login to complete first
+  setTimeout(() => {
+    if (document.getElementById('loginOverlay') && document.getElementById('loginOverlay').style.display === 'none') {
+      alert('Database connection failed. Please refresh the page. If the problem persists, check your internet connection and try clearing your browser cache.');
+    }
+  }, 2000);
+}
 
 // startApp function - ensure everything is initialized
 function startApp() {
