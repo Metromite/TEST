@@ -306,7 +306,7 @@ body{
 <script type="module">
 /* ===== Firebase + App logic (UNCHANGED except CSV export adjustments) ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
-import { getDatabase, ref, set, onValue, update, remove, runTransaction, get, goOnline } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
+import { getDatabase, ref, set, onValue, update, remove, runTransaction, get, goOnline, goOffline } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
@@ -322,28 +322,57 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-/* ===== Firebase Connection Management - Cross-browser compatible (Safari + Chrome + others) ===== */
+/* ===== Firebase Connection Management - Robust cross-browser solution ===== */
 let connectionRetryAttempts = 0;
-const MAX_RETRY_ATTEMPTS = 5;
+const MAX_RETRY_ATTEMPTS = 10;
 let reconnectTimer = null;
 let connectionCheckInterval = null;
-let isManualReconnect = false;
+let isReconnecting = false;
+let connectionStateListener = null;
+let isPageRefreshing = false;
 
-// Exponential backoff for reconnection
-function getReconnectDelay(attempt) {
-  const baseDelay = 1000; // 1 second
-  const maxDelay = 30000; // 30 seconds
-  const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-  return delay + Math.random() * 1000; // Add jitter
+// Force a clean reconnection by going offline then online
+function forceReconnect() {
+  if (isReconnecting) return;
+  
+  isReconnecting = true;
+  console.log('Firebase: Forcing clean reconnection...');
+  
+  try {
+    // Go offline first to clear any stale connections
+    goOffline(db);
+    
+    // Wait a moment, then go back online for a fresh connection
+    setTimeout(() => {
+      goOnline(db);
+      
+      // Reset reconnecting flag after connection attempt
+      setTimeout(() => {
+        isReconnecting = false;
+      }, 3000);
+    }, 500);
+  } catch (error) {
+    console.error('Firebase: Force reconnect error:', error);
+    isReconnecting = false;
+  }
 }
 
-// Robust reconnection function with exponential backoff
+// Exponential backoff reconnection
+function getReconnectDelay(attempt) {
+  const baseDelay = 500;
+  const maxDelay = 10000;
+  return Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+}
+
+// Attempt reconnection with exponential backoff
 function attemptReconnect() {
-  if (isManualReconnect) return;
+  if (isReconnecting || isPageRefreshing) return;
   
   if (connectionRetryAttempts >= MAX_RETRY_ATTEMPTS) {
-    console.warn('Firebase: Max reconnection attempts reached. Resetting...');
+    console.warn('Firebase: Max retries reached, forcing clean reconnect...');
     connectionRetryAttempts = 0;
+    forceReconnect();
+    return;
   }
   
   const delay = getReconnectDelay(connectionRetryAttempts);
@@ -352,158 +381,194 @@ function attemptReconnect() {
   if (reconnectTimer) clearTimeout(reconnectTimer);
   
   reconnectTimer = setTimeout(() => {
-    console.log(`Firebase: Attempting reconnection (attempt ${connectionRetryAttempts})...`);
-    isManualReconnect = true;
-    
-    try {
-      goOnline(db);
-      
-      // Verify connection after a short delay
-      setTimeout(() => {
-        isManualReconnect = false;
-      }, 2000);
-    } catch (error) {
-      console.error('Firebase: Reconnection error:', error);
-      isManualReconnect = false;
-      attemptReconnect();
-    }
+    console.log(`Firebase: Reconnection attempt ${connectionRetryAttempts}...`);
+    forceReconnect();
   }, delay);
 }
 
-// Monitor connection state with robust handling
+// Monitor connection state
 const connectedRef = ref(db, '.info/connected');
-let connectionStateListener = null;
 
 function setupConnectionMonitor() {
-  // Clean up existing listener if any (onValue returns unsubscribe function)
+  // Clean up existing listener
   if (connectionStateListener && typeof connectionStateListener === 'function') {
-    connectionStateListener();
+    try {
+      connectionStateListener();
+    } catch (e) {
+      console.warn('Firebase: Error cleaning up listener:', e);
+    }
     connectionStateListener = null;
   }
   
+  // Set up new connection state listener
   connectionStateListener = onValue(connectedRef, (snapshot) => {
     const isConnected = snapshot.val();
     
     if (isConnected === true) {
-      console.log('Firebase: Connected successfully');
-      connectionRetryAttempts = 0; // Reset on successful connection
+      console.log('Firebase: ✅ Connected');
+      connectionRetryAttempts = 0;
+      isReconnecting = false;
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
-      isManualReconnect = false;
     } else if (isConnected === false) {
-      console.log('Firebase: Disconnected detected');
-      if (!isManualReconnect) {
+      console.log('Firebase: ❌ Disconnected');
+      if (!isReconnecting && !isPageRefreshing) {
         attemptReconnect();
       }
     }
   }, { onlyOnce: false });
 }
 
-// Initialize connection monitoring (only once on initial load)
-if (!connectionStateListener) {
-  setupConnectionMonitor();
-}
-
-// Explicitly go online on initialization
-goOnline(db);
-
-// Handle Safari's pageshow event (fires after page restore from cache/back-forward)
-window.addEventListener('pageshow', (event) => {
-  // event.persisted is true if page was loaded from cache
-  if (event.persisted) {
-    console.log('Firebase: Page restored from cache - reinitializing connection');
-    // Reset connection state
-    connectionRetryAttempts = 0;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    // Small delay to ensure page is fully loaded (Safari needs this)
-    setTimeout(() => {
-      goOnline(db);
-      // Only re-setup monitor if it's been cleared
-      if (!connectionStateListener) {
-        setupConnectionMonitor();
-      }
-    }, 150);
-  } else {
-    // Regular page load (not from cache)
-    setTimeout(() => {
-      goOnline(db);
-    }, 50);
-  }
-});
-
-// Handle page visibility changes (works across all browsers)
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    console.log('Firebase: Page became visible - ensuring connection');
-    // Small delay for Safari's delayed visibility handling
-    setTimeout(() => {
-      goOnline(db);
-    }, 50);
-  }
-});
-
-// Handle online/offline events (crucial for Safari)
-window.addEventListener('online', () => {
-  console.log('Firebase: Network came online - reconnecting');
+// Initialize connection - CRITICAL: Force clean connection on every load
+function initializeFirebaseConnection() {
+  console.log('Firebase: Initializing connection...');
+  
+  // Always force a clean reconnection on initialization
+  isReconnecting = false;
   connectionRetryAttempts = 0;
+  
+  // Setup connection monitor first (only if not already set up)
+  if (!connectionStateListener) {
+    setupConnectionMonitor();
+  }
+  
+  // Force clean reconnect to ensure fresh connection
+  forceReconnect();
+  
+  // Multiple attempts to ensure connection is established
   setTimeout(() => {
     goOnline(db);
-  }, 100);
-});
-
-window.addEventListener('offline', () => {
-  console.log('Firebase: Network went offline');
-});
-
-// Ensure connection on page load/refresh
-window.addEventListener('load', () => {
-  console.log('Firebase: Page loaded - initializing connection');
+  }, 500);
+  
   setTimeout(() => {
     goOnline(db);
-  }, 100);
-});
-
-// Handle DOMContentLoaded for faster initialization
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
+  }, 1500);
+  
+  setTimeout(() => {
     goOnline(db);
-  });
-} else {
-  // DOM already loaded
-  goOnline(db);
+    // Verify connection
+    get(ref(db, '.info/connected')).then((snapshot) => {
+      if (snapshot.val() !== true) {
+        console.warn('Firebase: Still not connected after initialization - retrying...');
+        forceReconnect();
+      }
+    }).catch(() => {
+      forceReconnect();
+    });
+  }, 3000);
 }
 
-// Periodic connection health check (longer interval to avoid Safari issues)
-connectionCheckInterval = setInterval(() => {
-  // Check connection state without forcing reconnection if already connected
-  get(ref(db, '.info/connected')).then((snapshot) => {
-    const isConnected = snapshot.val();
-    if (!isConnected) {
-      console.log('Firebase: Periodic check detected disconnect - reconnecting');
-      goOnline(db);
-    }
-  }).catch((error) => {
-    console.error('Firebase: Connection check error:', error);
-    goOnline(db);
-  });
-}, 60000); // Check every 60 seconds (less aggressive than before)
+// Initialize immediately
+initializeFirebaseConnection();
 
-// Handle beforeunload to clean up (Safari-specific)
+// Handle page refresh - Safari and all browsers
+let refreshHandled = false;
+
 window.addEventListener('beforeunload', () => {
+  isPageRefreshing = true;
   if (reconnectTimer) clearTimeout(reconnectTimer);
   if (connectionCheckInterval) clearInterval(connectionCheckInterval);
 });
 
-// Safari-specific: Handle pagehide event
+// CRITICAL: Handle pageshow for Safari (and all browsers on refresh)
+window.addEventListener('pageshow', (event) => {
+  console.log('Firebase: pageshow event, persisted:', event.persisted);
+  
+  isPageRefreshing = false;
+  refreshHandled = true;
+  
+  // Force reinitialize connection after any page show (refresh or cache restore)
+  setTimeout(() => {
+    initializeFirebaseConnection();
+  }, 200);
+});
+
+// Handle visibility changes
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    console.log('Firebase: Page visible - ensuring connection');
+    setTimeout(() => {
+      if (!isReconnecting) {
+        goOnline(db);
+        // Force reconnect if not connected within 2 seconds
+        setTimeout(() => {
+          get(ref(db, '.info/connected')).then((snapshot) => {
+            if (snapshot.val() !== true) {
+              console.log('Firebase: Not connected after visibility change - reconnecting');
+              forceReconnect();
+            }
+          }).catch(() => {
+            forceReconnect();
+          });
+        }, 2000);
+      }
+    }, 100);
+  }
+});
+
+// Handle online/offline events
+window.addEventListener('online', () => {
+  console.log('Firebase: Network online - reconnecting');
+  connectionRetryAttempts = 0;
+  setTimeout(() => {
+    initializeFirebaseConnection();
+  }, 300);
+});
+
+window.addEventListener('offline', () => {
+  console.log('Firebase: Network offline');
+});
+
+// Ensure connection on page load
+window.addEventListener('load', () => {
+  console.log('Firebase: Page loaded');
+  if (!refreshHandled) {
+    setTimeout(() => {
+      initializeFirebaseConnection();
+    }, 500);
+  }
+});
+
+// Handle DOMContentLoaded
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('Firebase: DOMContentLoaded');
+    if (!refreshHandled) {
+      setTimeout(() => {
+        goOnline(db);
+      }, 100);
+    }
+  });
+} else {
+  if (!refreshHandled) {
+    goOnline(db);
+  }
+}
+
+// Periodic connection health check
+connectionCheckInterval = setInterval(() => {
+  get(ref(db, '.info/connected')).then((snapshot) => {
+    const isConnected = snapshot.val();
+    if (isConnected !== true) {
+      console.log('Firebase: Health check failed - reconnecting');
+      if (!isReconnecting) {
+        forceReconnect();
+      }
+    }
+  }).catch((error) => {
+    console.error('Firebase: Health check error:', error);
+    if (!isReconnecting) {
+      forceReconnect();
+    }
+  });
+}, 30000); // Check every 30 seconds
+
+// Handle pagehide for Safari
 window.addEventListener('pagehide', (event) => {
   if (event.persisted) {
-    // Page is being cached by Safari
-    console.log('Firebase: Page being cached by browser');
+    console.log('Firebase: Page being cached');
   }
 });
 
