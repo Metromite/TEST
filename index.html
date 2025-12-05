@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Dispatch Controller — Glass UI</title>
 <style>
 /* ---------- Base (desktop-first) ---------- */
@@ -302,39 +305,101 @@ body{
 
 <script type="module">
 /* ===== Firebase + App logic (UNCHANGED except CSV export adjustments) ===== */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
+
+// Global error handler to catch module loading failures
+window.addEventListener('error', (event) => {
+  if (event.filename && event.filename.includes('firebase')) {
+    console.error('Firebase module loading error:', event.error);
+    const msg = 'Failed to load Firebase modules. This is usually caused by browser caching.\n\nPlease:\n1. Hard refresh (Ctrl+Shift+R or Cmd+Shift+R)\n2. Clear browser cache\n3. Try incognito mode';
+    setTimeout(() => alert(msg), 100);
+  }
+});
+
+// Catch unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+  if (event.reason && (event.reason.message && event.reason.message.includes('firebase') || event.reason.code)) {
+    setTimeout(() => {
+      alert('Firebase error detected. Please clear your browser cache and hard refresh the page.');
+    }, 100);
+  }
+});
+
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
 import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
-  authDomain: "dispatchsystem-23f47.firebaseapp.com",
-  databaseURL: "https://dispatchsystem-23f47-default-rtdb.firebaseio.com",
-  projectId: "dispatchsystem-23f47",
-  storageBucket: "dispatchsystem-23f47.firebasestorage.app",
-  messagingSenderId: "131590857859",
-  appId: "1:131590857859:web:5959b6d9d9655fdd0ba7b6",
-  measurementId: "G-49GJE4J123"
-};
+// Ensure Firebase is only initialized once
+let app, db;
+try {
+  const firebaseConfig = {
+    apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
+    authDomain: "dispatchsystem-23f47.firebaseapp.com",
+    databaseURL: "https://dispatchsystem-23f47-default-rtdb.firebaseio.com",
+    projectId: "dispatchsystem-23f47",
+    storageBucket: "dispatchsystem-23f47.firebasestorage.app",
+    messagingSenderId: "131590857859",
+    appId: "1:131590857859:web:5959b6d9d9655fdd0ba7b6",
+    measurementId: "G-49GJE4J123"
+  };
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+  // Check if Firebase app already exists to prevent re-initialization errors
+  const existingApps = getApps();
+  if (existingApps.length > 0) {
+    app = existingApps[0];
+  } else {
+    app = initializeApp(firebaseConfig);
+  }
+  db = getDatabase(app);
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+  alert('Failed to initialize Firebase. Please clear your browser cache and refresh the page.');
+  throw error;
+}
 
-const loginOverlay = document.getElementById('loginOverlay');
-const loginBox = document.getElementById('loginBox');
-const loginBtn = document.getElementById('loginBtn');
-const loginUser = document.getElementById('loginUser');
-const loginPass = document.getElementById('loginPass');
-const rememberChk = document.getElementById('rememberChk');
-const clearSaved = document.getElementById('clearSaved');
+// Wait for DOM to be fully ready
+function ensureDOMReady() {
+  return new Promise((resolve) => {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', resolve);
+    } else {
+      resolve();
+    }
+  });
+}
+
+// Get DOM elements with error checking
+function getElement(id, required = true) {
+  const el = document.getElementById(id);
+  if (!el && required) {
+    console.error(`Required element not found: ${id}`);
+    throw new Error(`Required element not found: ${id}`);
+  }
+  return el;
+}
+
+// Wait for DOM, then get elements
+await ensureDOMReady();
+
+const loginOverlay = getElement('loginOverlay');
+const loginBox = getElement('loginBox');
+const loginBtn = getElement('loginBtn');
+const loginUser = getElement('loginUser');
+const loginPass = getElement('loginPass');
+const rememberChk = getElement('rememberChk');
+const clearSaved = getElement('clearSaved');
 
 const containerEl = document.querySelector('.container');
-const pendingArea = document.getElementById('pendingZones');
-const dispatchedArea = document.getElementById('dispatchedZones');
+if (!containerEl) throw new Error('Container element not found');
+
+const pendingArea = getElement('pendingZones');
+const dispatchedArea = getElement('dispatchedZones');
 const bays = document.querySelectorAll('.bay');
-const addBtn = document.getElementById('addBtn');
-const editToggleBtn = document.getElementById('editToggleBtn');
-const resetBtn = document.getElementById('resetBtn');
-const downloadBtn = document.getElementById('downloadBtn');
+if (bays.length === 0) throw new Error('No bay elements found');
+
+const addBtn = getElement('addBtn');
+const editToggleBtn = getElement('editToggleBtn');
+const resetBtn = getElement('resetBtn');
+const downloadBtn = getElement('downloadBtn');
 
 let editMode = false;
 let appStarted = false;
@@ -770,8 +835,15 @@ onValue(ref(db, 'zones/'), snapshot => {
   });
 });
 
-// startApp placeholder to avoid errors if called earlier
-function startApp() { /* real subscriptions already wired by onValue above */ }
+// startApp function - ensure everything is initialized
+function startApp() {
+  if (appStarted) return; // Prevent multiple initializations
+  appStarted = true;
+  
+  // Ensure all event listeners are properly attached
+  // The Firebase onValue listener is already set up above, so we just need to verify
+  console.log('App started successfully');
+}
 </script>
 </body>
 </html>
