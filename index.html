@@ -332,8 +332,116 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
-import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
-import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
+// ===== PROXY SYSTEM FOR UAE ACCESS =====
+// Multiple free proxy services for redundancy and reliability
+const PROXY_SERVICES = [
+  'https://api.allorigins.win/raw?url=',
+  'https://corsproxy.io/?',
+  'https://api.codetabs.com/v1/proxy?quest=',
+  'https://thingproxy.freeboard.io/fetch/',
+  'https://yacdn.org/proxy/',
+  'https://api.codetabs.com/v1/proxy?quest=',
+  'https://corsproxy.io/?',
+  'https://api.allorigins.win/raw?url='
+];
+
+let currentProxyIndex = 0;
+
+// Enhanced proxy fetch with automatic failover
+async function fetchWithProxy(url, options = {}) {
+  // Check if URL is already proxied
+  if (url.includes('allorigins.win') || url.includes('corsproxy.io') || url.includes('codetabs.com') || 
+      url.includes('cors-anywhere') || url.includes('thingproxy') || url.includes('yacdn.org')) {
+    return fetch(url, options);
+  }
+
+  // Try each proxy service
+  for (let i = 0; i < PROXY_SERVICES.length; i++) {
+    try {
+      const proxyIndex = (currentProxyIndex + i) % PROXY_SERVICES.length;
+      const proxyUrl = PROXY_SERVICES[proxyIndex] + encodeURIComponent(url);
+      
+      const response = await fetch(proxyUrl, {
+        ...options,
+        mode: 'cors',
+        headers: {
+          ...options.headers,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': options.headers?.Accept || '*/*'
+        }
+      });
+      
+      if (response.ok || response.status < 500) {
+        currentProxyIndex = (proxyIndex + 1) % PROXY_SERVICES.length;
+        return response;
+      }
+    } catch (e) {
+      console.warn(`Proxy ${i + 1} failed, trying next...`, e.message);
+    }
+  }
+  
+  // Last resort: try direct connection
+  console.warn('All proxies failed, attempting direct connection');
+  return fetch(url, options);
+}
+
+// Intercept global fetch to proxy Firebase requests
+const originalFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+  const urlString = typeof url === 'string' ? url : url.toString();
+  
+  // Proxy Firebase and Google services
+  if (urlString.includes('firebase') || urlString.includes('googleapis.com') || 
+      urlString.includes('gstatic.com') || urlString.includes('google.com')) {
+    return fetchWithProxy(urlString, options);
+  }
+  
+  // Use original fetch for other requests
+  return originalFetch(url, options);
+};
+
+// Dynamic import with proxy
+async function importWithProxy(url) {
+  try {
+    const response = await fetchWithProxy(url);
+    const code = await response.text();
+    
+    // Create a module from the fetched code
+    const blob = new Blob([code], { type: 'application/javascript' });
+    const blobUrl = URL.createObjectURL(blob);
+    
+    try {
+      const module = await import(blobUrl);
+      URL.revokeObjectURL(blobUrl);
+      return module;
+    } catch (importError) {
+      URL.revokeObjectURL(blobUrl);
+      // Fallback: try direct import
+      console.warn('Blob import failed, trying direct import');
+      return import(url);
+    }
+  } catch (e) {
+    console.error('Import with proxy failed, trying direct:', e);
+    return import(url);
+  }
+}
+
+// Proxy WebSocket connections (for Firebase real-time)
+const originalWebSocket = window.WebSocket;
+window.WebSocket = function(url, protocols) {
+  // For WebSocket, we need to use a WebSocket proxy service
+  // Firebase uses wss:// connections which are harder to proxy
+  // We'll let the original WebSocket work and rely on fetch proxy for HTTP requests
+  console.log('WebSocket connection attempt:', url);
+  return new originalWebSocket(url, protocols);
+};
+
+// Import Firebase modules through proxy
+const firebaseAppModule = await importWithProxy("https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js");
+const firebaseDatabaseModule = await importWithProxy("https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js");
+
+const { initializeApp, getApps } = firebaseAppModule;
+const { getDatabase, ref, set, onValue, update, remove, runTransaction, get } = firebaseDatabaseModule;
 
 // Ensure Firebase is only initialized once
 let app, db;
