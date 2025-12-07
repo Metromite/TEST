@@ -332,206 +332,11 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
-// ===== PROXY SYSTEM FOR UAE ACCESS - IMMEDIATE PROXY MODE =====
-// Save original fetch before any modifications
-const originalFetch = window.fetch;
-
-// Reliable free proxy services - tested and working
-const PROXY_SERVICES = [
-  'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?',
-  'https://api.codetabs.com/v1/proxy?quest=',
-  'https://cors-anywhere.herokuapp.com/',
-  'https://thingproxy.freeboard.io/fetch/',
-  'https://yacdn.org/proxy/'
-];
-
-let currentProxyIndex = 0;
-const PROXY_TIMEOUT = 10000; // 10 second timeout per proxy attempt
-let workingProxy = null; // Cache working proxy
-
-// Check if URL is already proxied
-function isProxied(url) {
-  return url.includes('allorigins.win') || url.includes('corsproxy.io') || 
-         url.includes('codetabs.com') || url.includes('cors-anywhere') || 
-         url.includes('thingproxy') || url.includes('yacdn.org') ||
-         url.includes('herokuapp.com');
-}
-
-// Enhanced proxy fetch - uses proxy immediately, no direct attempts
-async function fetchWithProxy(url, options = {}) {
-  // If already proxied, use original fetch
-  if (isProxied(url)) {
-    return originalFetch(url, options);
-  }
-
-  // Use cached working proxy if available
-  if (workingProxy) {
-    try {
-      const proxyUrl = workingProxy + encodeURIComponent(url);
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Proxy timeout')), PROXY_TIMEOUT)
-      );
-      const fetchPromise = originalFetch(proxyUrl, {
-        ...options,
-        mode: 'cors',
-        headers: {
-          ...options.headers,
-          'X-Requested-With': 'XMLHttpRequest',
-          'Accept': options.headers?.Accept || '*/*'
-        }
-      });
-      const response = await Promise.race([fetchPromise, timeoutPromise]);
-      if (response && (response.ok || response.status < 500)) {
-        return response;
-      }
-    } catch (e) {
-      workingProxy = null; // Reset if cached proxy fails
-    }
-  }
-
-  // Try each proxy service
-  for (let i = 0; i < PROXY_SERVICES.length; i++) {
-    try {
-      const proxyIndex = (currentProxyIndex + i) % PROXY_SERVICES.length;
-      const proxyUrl = PROXY_SERVICES[proxyIndex] + encodeURIComponent(url);
-      
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Proxy timeout')), PROXY_TIMEOUT)
-      );
-      
-      const fetchPromise = originalFetch(proxyUrl, {
-        ...options,
-        mode: 'cors',
-        headers: {
-          ...options.headers,
-          'X-Requested-With': 'XMLHttpRequest',
-          'Accept': options.headers?.Accept || '*/*'
-        }
-      });
-      
-      const response = await Promise.race([fetchPromise, timeoutPromise]);
-      
-      if (response && (response.ok || response.status < 500)) {
-        workingProxy = PROXY_SERVICES[proxyIndex]; // Cache working proxy
-        currentProxyIndex = (proxyIndex + 1) % PROXY_SERVICES.length;
-        return response;
-      }
-    } catch (e) {
-      console.warn(`Proxy ${i + 1} failed, trying next...`, e.message);
-    }
-  }
-  
-  throw new Error('All proxy services failed. Please check your connection.');
-}
-
-// Intercept global fetch to proxy ALL Firebase/Google requests immediately
-window.fetch = function(url, options = {}) {
-  const urlString = typeof url === 'string' ? url : url.toString();
-  
-  // Proxy Firebase and Google services immediately (no direct attempts)
-  // Specifically catch firebaseio.com for database connections
-  if ((urlString.includes('firebase') || urlString.includes('firebaseio.com') || 
-      urlString.includes('googleapis.com') || urlString.includes('gstatic.com') || 
-      urlString.includes('google.com') || urlString.includes('firebaseapp.com')) &&
-      !isProxied(urlString)) {
-    console.log('Proxying request:', urlString);
-    return fetchWithProxy(urlString, options);
-  }
-  
-  // Use original fetch for other requests
-  return originalFetch(url, options);
-};
-
-// Dynamic import with proxy - uses proxy immediately, no direct attempts
-async function importWithProxy(url) {
-  console.log('Loading module through proxy:', url);
-  
-  try {
-    const response = await fetchWithProxy(url);
-    if (!response.ok) throw new Error(`Proxy response not OK: ${response.status}`);
-    
-    const code = await response.text();
-    if (!code || code.length < 100) throw new Error('Invalid code received from proxy');
-    
-    // Create a module from the fetched code
-    const blob = new Blob([code], { type: 'application/javascript' });
-    const blobUrl = URL.createObjectURL(blob);
-    
-    try {
-      const module = await import(blobUrl);
-      URL.revokeObjectURL(blobUrl);
-      console.log('Module loaded successfully through proxy');
-      return module;
-    } catch (importError) {
-      URL.revokeObjectURL(blobUrl);
-      console.error('Blob import failed:', importError);
-      throw importError;
-    }
-  } catch (proxyError) {
-    console.error('Proxy import failed:', proxyError);
-    throw new Error('Failed to load module through proxy. All proxy services unavailable.');
-  }
-}
-
-// Proxy WebSocket connections (for Firebase real-time)
-// Note: WebSocket can't be proxied through HTTP proxies, but Firebase will fall back to long polling
-const originalWebSocket = window.WebSocket;
-window.WebSocket = function(url, protocols) {
-  const urlString = typeof url === 'string' ? url : url.toString();
-  console.log('WebSocket connection attempt:', urlString);
-  
-  // For Firebase WebSocket connections, they will fail and Firebase will auto-fallback to long polling
-  // Long polling uses HTTP which can be proxied
-  try {
-    return new originalWebSocket(url, protocols);
-  } catch (e) {
-    console.warn('WebSocket creation failed, Firebase will use long polling:', e);
-    throw e; // Let Firebase handle the fallback
-  }
-};
-
-// Import Firebase modules through proxy immediately (no direct attempts)
-let firebaseAppModule, firebaseDatabaseModule;
-console.log('Loading Firebase modules through proxy...');
-try {
-  firebaseAppModule = await importWithProxy("https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js");
-  firebaseDatabaseModule = await importWithProxy("https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js");
-  console.log('Firebase modules loaded successfully!');
-} catch (error) {
-  console.error('Failed to load Firebase modules through proxy:', error);
-  alert('Failed to load Firebase through proxy. Please check your internet connection or try again later.');
-  throw error;
-}
-
-const { initializeApp, getApps } = firebaseAppModule;
-const { getDatabase, ref, set, onValue, update, remove, runTransaction, get } = firebaseDatabaseModule;
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
+import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js";
 
 // Ensure Firebase is only initialized once
 let app, db;
-
-// Test database connection with retry
-async function testDatabaseConnection(database, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      // Try to read a non-existent path with a short timeout
-      const testRef = ref(database, '.info/connected');
-      const snapshot = await Promise.race([
-        get(testRef),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 5000))
-      ]);
-      console.log('Database connection test successful');
-      return true;
-    } catch (error) {
-      console.warn(`Database connection test attempt ${i + 1} failed:`, error.message);
-      if (i < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
-      }
-    }
-  }
-  return false;
-}
-
 try {
   const firebaseConfig = {
     apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
@@ -552,15 +357,6 @@ try {
     app = initializeApp(firebaseConfig);
   }
   db = getDatabase(app);
-  
-  // Test connection asynchronously (don't block app startup)
-  testDatabaseConnection(db).then(connected => {
-    if (!connected) {
-      console.warn('Database connection test failed, but continuing anyway. Firebase will retry automatically.');
-    }
-  }).catch(err => {
-    console.warn('Database connection test error:', err);
-  });
 } catch (error) {
   console.error('Firebase initialization error:', error);
   // Don't show alert immediately - let the app try to continue
@@ -1135,19 +931,7 @@ if (db) {
   // Show error after a delay to allow login to complete first
   setTimeout(() => {
     if (document.getElementById('loginOverlay') && document.getElementById('loginOverlay').style.display === 'none') {
-      alert('Database connection failed through proxy. The system is trying to connect via proxy services. Please wait a moment and the connection should establish automatically. If the problem persists, refresh the page.');
-      // Retry database initialization after showing message
-      setTimeout(() => {
-        if (!db && app) {
-          try {
-            db = getDatabase(app);
-            console.log('Database reinitialized, retrying connection...');
-            location.reload(); // Reload to retry with new db instance
-          } catch (e) {
-            console.error('Failed to reinitialize database:', e);
-          }
-        }
-      }, 3000);
+      alert('Database connection failed. Please refresh the page. If the problem persists, check your internet connection and try clearing your browser cache.');
     }
   }, 2000);
 }
