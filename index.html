@@ -342,7 +342,8 @@ const PROXY_SERVICES = [
   'https://corsproxy.io/?',
   'https://api.codetabs.com/v1/proxy?quest=',
   'https://cors-anywhere.herokuapp.com/',
-  'https://thingproxy.freeboard.io/fetch/'
+  'https://thingproxy.freeboard.io/fetch/',
+  'https://yacdn.org/proxy/'
 ];
 
 let currentProxyIndex = 0;
@@ -429,9 +430,12 @@ window.fetch = function(url, options = {}) {
   const urlString = typeof url === 'string' ? url : url.toString();
   
   // Proxy Firebase and Google services immediately (no direct attempts)
-  if ((urlString.includes('firebase') || urlString.includes('googleapis.com') || 
-      urlString.includes('gstatic.com') || urlString.includes('google.com')) &&
+  // Specifically catch firebaseio.com for database connections
+  if ((urlString.includes('firebase') || urlString.includes('firebaseio.com') || 
+      urlString.includes('googleapis.com') || urlString.includes('gstatic.com') || 
+      urlString.includes('google.com') || urlString.includes('firebaseapp.com')) &&
       !isProxied(urlString)) {
+    console.log('Proxying request:', urlString);
     return fetchWithProxy(urlString, options);
   }
   
@@ -471,11 +475,20 @@ async function importWithProxy(url) {
 }
 
 // Proxy WebSocket connections (for Firebase real-time)
+// Note: WebSocket can't be proxied through HTTP proxies, but Firebase will fall back to long polling
 const originalWebSocket = window.WebSocket;
 window.WebSocket = function(url, protocols) {
-  console.log('WebSocket connection attempt:', url);
-  // WebSocket proxying is complex, let it try direct (might work if HTTP proxy worked)
-  return new originalWebSocket(url, protocols);
+  const urlString = typeof url === 'string' ? url : url.toString();
+  console.log('WebSocket connection attempt:', urlString);
+  
+  // For Firebase WebSocket connections, they will fail and Firebase will auto-fallback to long polling
+  // Long polling uses HTTP which can be proxied
+  try {
+    return new originalWebSocket(url, protocols);
+  } catch (e) {
+    console.warn('WebSocket creation failed, Firebase will use long polling:', e);
+    throw e; // Let Firebase handle the fallback
+  }
 };
 
 // Import Firebase modules through proxy immediately (no direct attempts)
@@ -496,6 +509,29 @@ const { getDatabase, ref, set, onValue, update, remove, runTransaction, get } = 
 
 // Ensure Firebase is only initialized once
 let app, db;
+
+// Test database connection with retry
+async function testDatabaseConnection(database, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      // Try to read a non-existent path with a short timeout
+      const testRef = ref(database, '.info/connected');
+      const snapshot = await Promise.race([
+        get(testRef),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 5000))
+      ]);
+      console.log('Database connection test successful');
+      return true;
+    } catch (error) {
+      console.warn(`Database connection test attempt ${i + 1} failed:`, error.message);
+      if (i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+      }
+    }
+  }
+  return false;
+}
+
 try {
   const firebaseConfig = {
     apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
@@ -516,6 +552,15 @@ try {
     app = initializeApp(firebaseConfig);
   }
   db = getDatabase(app);
+  
+  // Test connection asynchronously (don't block app startup)
+  testDatabaseConnection(db).then(connected => {
+    if (!connected) {
+      console.warn('Database connection test failed, but continuing anyway. Firebase will retry automatically.');
+    }
+  }).catch(err => {
+    console.warn('Database connection test error:', err);
+  });
 } catch (error) {
   console.error('Firebase initialization error:', error);
   // Don't show alert immediately - let the app try to continue
@@ -1090,7 +1135,19 @@ if (db) {
   // Show error after a delay to allow login to complete first
   setTimeout(() => {
     if (document.getElementById('loginOverlay') && document.getElementById('loginOverlay').style.display === 'none') {
-      alert('Database connection failed. Please refresh the page. If the problem persists, check your internet connection and try clearing your browser cache.');
+      alert('Database connection failed through proxy. The system is trying to connect via proxy services. Please wait a moment and the connection should establish automatically. If the problem persists, refresh the page.');
+      // Retry database initialization after showing message
+      setTimeout(() => {
+        if (!db && app) {
+          try {
+            db = getDatabase(app);
+            console.log('Database reinitialized, retrying connection...');
+            location.reload(); // Reload to retry with new db instance
+          } catch (e) {
+            console.error('Failed to reinitialize database:', e);
+          }
+        }
+      }, 3000);
     }
   }, 2000);
 }
