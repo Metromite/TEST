@@ -333,35 +333,40 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // ===== PROXY SYSTEM FOR UAE ACCESS =====
+// Save original fetch before any modifications
+const originalFetch = window.fetch;
+
 // Multiple free proxy services for redundancy and reliability
 const PROXY_SERVICES = [
   'https://api.allorigins.win/raw?url=',
   'https://corsproxy.io/?',
-  'https://api.codetabs.com/v1/proxy?quest=',
-  'https://thingproxy.freeboard.io/fetch/',
-  'https://yacdn.org/proxy/',
-  'https://api.codetabs.com/v1/proxy?quest=',
-  'https://corsproxy.io/?',
-  'https://api.allorigins.win/raw?url='
+  'https://api.codetabs.com/v1/proxy?quest='
 ];
 
 let currentProxyIndex = 0;
+const PROXY_TIMEOUT = 8000; // 8 second timeout per proxy attempt
 
-// Enhanced proxy fetch with automatic failover
+// Enhanced proxy fetch with automatic failover and timeout
 async function fetchWithProxy(url, options = {}) {
-  // Check if URL is already proxied
+  // Check if URL is already proxied - use original fetch to avoid recursion
   if (url.includes('allorigins.win') || url.includes('corsproxy.io') || url.includes('codetabs.com') || 
       url.includes('cors-anywhere') || url.includes('thingproxy') || url.includes('yacdn.org')) {
-    return fetch(url, options);
+    return originalFetch(url, options);
   }
 
-  // Try each proxy service
+  // Try each proxy service with timeout
   for (let i = 0; i < PROXY_SERVICES.length; i++) {
     try {
       const proxyIndex = (currentProxyIndex + i) % PROXY_SERVICES.length;
       const proxyUrl = PROXY_SERVICES[proxyIndex] + encodeURIComponent(url);
       
-      const response = await fetch(proxyUrl, {
+      // Create a timeout promise
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Proxy timeout')), PROXY_TIMEOUT)
+      );
+      
+      // Race between fetch and timeout
+      const fetchPromise = originalFetch(proxyUrl, {
         ...options,
         mode: 'cors',
         headers: {
@@ -371,28 +376,39 @@ async function fetchWithProxy(url, options = {}) {
         }
       });
       
-      if (response.ok || response.status < 500) {
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
+      
+      if (response && (response.ok || response.status < 500)) {
         currentProxyIndex = (proxyIndex + 1) % PROXY_SERVICES.length;
         return response;
       }
     } catch (e) {
       console.warn(`Proxy ${i + 1} failed, trying next...`, e.message);
+      // Continue to next proxy
     }
   }
   
-  // Last resort: try direct connection
+  // Last resort: try direct connection with timeout
   console.warn('All proxies failed, attempting direct connection');
-  return fetch(url, options);
+  try {
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Direct connection timeout')), PROXY_TIMEOUT)
+    );
+    return await Promise.race([originalFetch(url, options), timeoutPromise]);
+  } catch (e) {
+    throw new Error('All connection attempts failed');
+  }
 }
 
 // Intercept global fetch to proxy Firebase requests
-const originalFetch = window.fetch;
 window.fetch = function(url, options = {}) {
   const urlString = typeof url === 'string' ? url : url.toString();
   
-  // Proxy Firebase and Google services
-  if (urlString.includes('firebase') || urlString.includes('googleapis.com') || 
-      urlString.includes('gstatic.com') || urlString.includes('google.com')) {
+  // Only proxy Firebase and Google services, use original fetch for proxy services themselves
+  if ((urlString.includes('firebase') || urlString.includes('googleapis.com') || 
+      urlString.includes('gstatic.com') || urlString.includes('google.com')) &&
+      !urlString.includes('allorigins.win') && !urlString.includes('corsproxy.io') && 
+      !urlString.includes('codetabs.com')) {
     return fetchWithProxy(urlString, options);
   }
   
@@ -400,45 +416,68 @@ window.fetch = function(url, options = {}) {
   return originalFetch(url, options);
 };
 
-// Dynamic import with proxy
+// Dynamic import with proxy and timeout
 async function importWithProxy(url) {
+  // Try direct import first (fastest), then fallback to proxy
   try {
-    const response = await fetchWithProxy(url);
-    const code = await response.text();
-    
-    // Create a module from the fetched code
-    const blob = new Blob([code], { type: 'application/javascript' });
-    const blobUrl = URL.createObjectURL(blob);
+    const directImport = Promise.race([
+      import(url),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Direct import timeout')), 5000))
+    ]);
+    return await directImport;
+  } catch (directError) {
+    console.log('Direct import failed, trying proxy...', directError.message);
     
     try {
-      const module = await import(blobUrl);
-      URL.revokeObjectURL(blobUrl);
-      return module;
-    } catch (importError) {
-      URL.revokeObjectURL(blobUrl);
-      // Fallback: try direct import
-      console.warn('Blob import failed, trying direct import');
+      const response = await fetchWithProxy(url);
+      if (!response.ok) throw new Error('Proxy response not OK');
+      
+      const code = await response.text();
+      if (!code || code.length < 100) throw new Error('Invalid code received');
+      
+      // Create a module from the fetched code
+      const blob = new Blob([code], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      
+      try {
+        const module = await import(blobUrl);
+        URL.revokeObjectURL(blobUrl);
+        return module;
+      } catch (importError) {
+        URL.revokeObjectURL(blobUrl);
+        throw importError;
+      }
+    } catch (proxyError) {
+      console.error('Proxy import also failed:', proxyError);
+      // Last resort: try direct import again (might work if network improved)
       return import(url);
     }
-  } catch (e) {
-    console.error('Import with proxy failed, trying direct:', e);
-    return import(url);
   }
 }
 
 // Proxy WebSocket connections (for Firebase real-time)
 const originalWebSocket = window.WebSocket;
 window.WebSocket = function(url, protocols) {
-  // For WebSocket, we need to use a WebSocket proxy service
-  // Firebase uses wss:// connections which are harder to proxy
-  // We'll let the original WebSocket work and rely on fetch proxy for HTTP requests
   console.log('WebSocket connection attempt:', url);
   return new originalWebSocket(url, protocols);
 };
 
-// Import Firebase modules through proxy
-const firebaseAppModule = await importWithProxy("https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js");
-const firebaseDatabaseModule = await importWithProxy("https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js");
+// Import Firebase modules through proxy with error handling
+let firebaseAppModule, firebaseDatabaseModule;
+try {
+  firebaseAppModule = await importWithProxy("https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js");
+  firebaseDatabaseModule = await importWithProxy("https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js");
+} catch (error) {
+  console.error('Failed to load Firebase modules:', error);
+  // Try direct import as last resort
+  try {
+    firebaseAppModule = await import("https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js");
+    firebaseDatabaseModule = await import("https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js");
+  } catch (finalError) {
+    console.error('All Firebase import methods failed:', finalError);
+    throw finalError;
+  }
+}
 
 const { initializeApp, getApps } = firebaseAppModule;
 const { getDatabase, ref, set, onValue, update, remove, runTransaction, get } = firebaseDatabaseModule;
