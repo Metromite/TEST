@@ -338,29 +338,34 @@ import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } f
 // Ensure Firebase is only initialized once
 let app, db;
 try {
-  const firebaseConfig = {
-    apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
-    authDomain: "dispatchsystem-23f47.firebaseapp.com",
-    databaseURL: "https://dispatchsystem-23f47-default-rtdb.firebaseio.com",
-    projectId: "dispatchsystem-23f47",
-    storageBucket: "dispatchsystem-23f47.firebasestorage.app",
-    messagingSenderId: "131590857859",
-    appId: "1:131590857859:web:5959b6d9d9655fdd0ba7b6",
-    measurementId: "G-49GJE4J123"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyDk_IDJAQZMBNtu57i_ls6wCsi3tzX19-A",
+  authDomain: "helper-bb456.firebaseapp.com",
+  databaseURL: "https://helper-bb456-default-rtdb.firebaseio.com",
+  projectId: "helper-bb456",
+  storageBucket: "helper-bb456.firebasestorage.app",
+  messagingSenderId: "11179124401",
+  appId: "1:11179124401:web:95bffde8f57e8f57962490",
+  measurementId: "G-2FPWGR4KH2"
+};
 
-  // Check if Firebase app already exists to prevent re-initialization errors
-  const existingApps = getApps();
-  if (existingApps.length > 0) {
-    app = existingApps[0];
-  } else {
-    app = initializeApp(firebaseConfig);
-  }
-  db = getDatabase(app);
-} catch (error) {
-  console.error('Firebase initialization error:', error);
-  // Don't show alert immediately - let the app try to continue
-  // User will see error when trying to use features
+let db = null;
+let usingRestFallback = false;
+let restPollIntervalId = null;
+let realtimeConnected = false;
+const REST_POLL_MS = 3000;
+
+// convenience base URL for Realtime DB REST
+const RTDB_REST_BASE = (firebaseConfig.databaseURL || '').replace(/\/$/,'');
+
+/* initialize compat SDK and try to setup real-time */
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+  console.info('Firebase initialized (compat)');
+} catch (e) {
+  console.error('Firebase init error', e);
+  db = null;
 }
 
 // Wait for DOM to be fully ready
@@ -948,3 +953,4 @@ function startApp() {
 </script>
 </body>
 </html>
+
