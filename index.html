@@ -304,17 +304,15 @@ body{
 </div>
 
 <script type="module">
-/* ===== Firebase + App logic (UNCHANGED except CSV export adjustments) ===== */
+/* ===== Firebase + App logic (UNCHANGED except Firebase config) ===== */
 
 // Global error handler to catch module loading failures
 window.addEventListener('error', (event) => {
   console.error('Global error:', event.error, event.filename);
   if (event.filename && (event.filename.includes('firebase') || event.filename.includes('index-8'))) {
     console.error('Module loading error:', event.error);
-    // Don't show alert immediately - try to recover first
     if (event.error && event.error.message && event.error.message.includes('Failed to fetch')) {
       console.warn('Network error detected, will retry...');
-      // The page will need a manual refresh, but don't spam alerts
     }
   }
 }, true);
@@ -322,12 +320,11 @@ window.addEventListener('error', (event) => {
 // Catch unhandled promise rejections
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
-  // Prevent default browser error handling for known issues
   if (event.reason && typeof event.reason === 'object') {
     const msg = event.reason.message || String(event.reason);
     if (msg.includes('firebase') || msg.includes('Failed to fetch') || event.reason.code) {
       console.warn('Firebase-related error caught:', event.reason);
-      event.preventDefault(); // Prevent console error spam
+      event.preventDefault();
     }
   }
 });
@@ -339,17 +336,16 @@ import { getDatabase, ref, set, onValue, update, remove, runTransaction, get } f
 let app, db;
 try {
   const firebaseConfig = {
-    apiKey: "AIzaSyA9n5lGdlNkgMmC570jArJwKY5P2c_XkcY",
-    authDomain: "dispatchsystem-23f47.firebaseapp.com",
-    databaseURL: "https://dispatchsystem-23f47-default-rtdb.firebaseio.com",
-    projectId: "dispatchsystem-23f47",
-    storageBucket: "dispatchsystem-23f47.firebasestorage.app",
-    messagingSenderId: "131590857859",
-    appId: "1:131590857859:web:5959b6d9d9655fdd0ba7b6",
-    measurementId: "G-49GJE4J123"
+    apiKey: "AIzaSyBv24bm5ZmLohkgApxhlQtwfIg8Yvco_gg",
+    authDomain: "new-zones.firebaseapp.com",
+    databaseURL: "https://new-zones-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "new-zones",
+    storageBucket: "new-zones.firebasestorage.app",
+    messagingSenderId: "433961446364",
+    appId: "1:433961446364:web:d9bfe6f4ff63e9b27e7d19",
+    measurementId: "G-6FY61MGYXX"
   };
 
-  // Check if Firebase app already exists to prevent re-initialization errors
   const existingApps = getApps();
   if (existingApps.length > 0) {
     app = existingApps[0];
@@ -359,8 +355,6 @@ try {
   db = getDatabase(app);
 } catch (error) {
   console.error('Firebase initialization error:', error);
-  // Don't show alert immediately - let the app try to continue
-  // User will see error when trying to use features
 }
 
 // Wait for DOM to be fully ready
@@ -441,7 +435,7 @@ function getSavedCredentials() {
 function showAppAndHideLogin() {
   loginOverlay.style.display = 'none';
   containerEl.style.display = '';
-  startApp(); // initialize listeners and firebase subscriptions
+  startApp();
 }
 
 function showLogin() {
@@ -451,7 +445,6 @@ function showLogin() {
 
 (function initAuth() {
   const saved = getSavedCredentials();
-  // Check if user was previously logged in (session persistence)
   const wasLoggedIn = sessionStorage.getItem('dispatch_logged_in') === 'true';
   
   if (saved && saved.username && saved.password) {
@@ -459,17 +452,13 @@ function showLogin() {
     loginPass.value = saved.password;
     rememberChk.checked = true;
     
-    // Auto-login if credentials are saved and user was previously logged in
-    // Wait a bit to ensure Firebase is initialized
     if (wasLoggedIn && saved.username === 'admin' && saved.password === '0000') {
-      // Wait for Firebase to be ready, then auto-login
       const checkFirebase = setInterval(() => {
         if (db) {
           clearInterval(checkFirebase);
           showAppAndHideLogin();
         }
       }, 100);
-      // Timeout after 3 seconds - if Firebase doesn't load, show login
       setTimeout(() => {
         clearInterval(checkFirebase);
         if (!db) {
@@ -506,12 +495,10 @@ loginBtn.addEventListener('click', () => {
     } else {
       clearSavedCredentials();
     }
-    // Mark as logged in for session persistence
     try {
       sessionStorage.setItem('dispatch_logged_in', 'true');
     } catch(e) {
       console.warn('SessionStorage not available (may be blocked by privacy settings):', e);
-      // Continue anyway - the app should still work
     }
     showAppAndHideLogin();
   } else {
@@ -520,7 +507,7 @@ loginBtn.addEventListener('click', () => {
 });
 
 /* ---------------------------
-   Sequence logic (unchanged)
+   Sequence logic
 */
 async function assignSequenceFirebase(zoneId) {
   if (!db) {
@@ -583,7 +570,7 @@ async function freeSequenceFirebase(zoneId) {
 }
 
 /* ---------------------------
-   UI initialization functions (kept same behavior)
+   UI initialization functions
 */
 function initZone(zone) {
   if (zone._inited) return;
@@ -732,11 +719,8 @@ resetBtn.addEventListener('click', async () => {
 });
 
 /* ---------------------------
-   CSV export: adjusted to include UAE (Asia/Dubai) local date/time columns,
-   keep inGateStart_iso and dispatchedTime_iso (UTC), keep inGate duration,
-   REMOVE dispatchDuration_HH:MM:SS column as requested.
+   CSV export (unchanged)
 */
-
 downloadBtn.addEventListener('click', async () => {
   if (!db) {
     alert('Database not ready. Please refresh the page.');
@@ -771,8 +755,7 @@ downloadBtn.addEventListener('click', async () => {
     return `${pad(hours)}:${pad(mins)}:${pad(secs)}`;
   }
 
-  // Helpers to format date/time in Asia/Dubai
-  const dateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai' }); // YYYY-MM-DD
+  const dateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai' });
   const timeFormatter = new Intl.DateTimeFormat('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Dubai' });
 
   for (const id in obj) {
@@ -794,7 +777,6 @@ downloadBtn.addEventListener('click', async () => {
     const dispMs = z.dispatchedTime != null ? z.dispatchedTime : null;
     const dispIso = dispMs ? new Date(dispMs).toISOString() : '';
 
-    // Format UAE-local date/time (separate columns)
     let inDateUAE = '';
     let inTimeUAE = '';
     if (inMs != null) {
@@ -852,67 +834,67 @@ downloadBtn.addEventListener('click', async () => {
 // Set up Firebase listener - only if db is initialized
 if (db) {
   onValue(ref(db, 'zones/'), snapshot => {
-  const data = snapshot.val() || {};
-  for (const id in data) {
-    const zData = data[id] || {};
-    let zone = document.getElementById(id);
+    const data = snapshot.val() || {};
+    for (const id in data) {
+      const zData = data[id] || {};
+      let zone = document.getElementById(id);
 
-    if (zData.deleted) {
-      if (zone && zone.parentNode) zone.remove();
-      continue;
-    }
-
-    if (!zone) {
-      zone = document.createElement('div');
-      zone.className = 'zone';
-      zone.id = id;
-      zone.draggable = true;
-      zone.innerHTML = `<span class="name">${zData.name || id}</span>`;
-      pendingArea.appendChild(zone);
-    } else {
-      const ns = zone.querySelector('.name');
-      if (ns && zData.name) ns.textContent = zData.name;
-    }
-    initZone(zone);
-
-    if (zData.status === 'pending') {
-      pendingArea.appendChild(zone);
-      zone.querySelector('.timer')?.style && (zone.querySelector('.timer').style.display = 'none');
-      zone.querySelector('.dispatched-time')?.style && (zone.querySelector('.dispatched-time').style.display = 'none');
-    } else if (zData.status === 'in-gate') {
-      const bay = document.getElementById(zData.bayId) || bays[0];
-      bay.appendChild(zone);
-      if (zData.startTime) {
-        const timerEl = zone.querySelector('.timer');
-        timerEl.style.display = 'block';
-        if (zone.dataset.interval) clearInterval(zone.dataset.interval);
-        const startTime = zData.startTime;
-        const interval = setInterval(() => {
-          const diff = Math.floor((Date.now() - startTime) / 1000);
-          const mins = Math.floor(diff / 60), secs = diff % 60;
-          timerEl.textContent = `⏱ ${mins}m ${secs}s`;
-        }, 1000);
-        zone.dataset.interval = interval;
+      if (zData.deleted) {
+        if (zone && zone.parentNode) zone.remove();
+        continue;
       }
-    } else if (zData.status === 'dispatched') {
-      dispatchedArea.appendChild(zone);
-      if (zData.dispatchedTime) {
-        const dispEl = zone.querySelector('.dispatched-time');
-        dispEl.style.display = 'block';
-        dispEl.textContent = `(Dispatched at: ${new Date(zData.dispatchedTime).toLocaleTimeString()})`;
-      }
-      if (zone.dataset.interval) { clearInterval(zone.dataset.interval); delete zone.dataset.interval; }
-    }
 
-    const badge = zone.querySelector('.seq-badge');
-    if (zData.sequenceNumber != null) {
-      badge.style.display = 'flex';
-      badge.textContent = zData.sequenceNumber;
-    } else {
-      badge.style.display = 'none';
-      badge.textContent = '';
+      if (!zone) {
+        zone = document.createElement('div');
+        zone.className = 'zone';
+        zone.id = id;
+        zone.draggable = true;
+        zone.innerHTML = `<span class="name">${zData.name || id}</span>`;
+        pendingArea.appendChild(zone);
+      } else {
+        const ns = zone.querySelector('.name');
+        if (ns && zData.name) ns.textContent = zData.name;
+      }
+      initZone(zone);
+
+      if (zData.status === 'pending') {
+        pendingArea.appendChild(zone);
+        zone.querySelector('.timer')?.style && (zone.querySelector('.timer').style.display = 'none');
+        zone.querySelector('.dispatched-time')?.style && (zone.querySelector('.dispatched-time').style.display = 'none');
+      } else if (zData.status === 'in-gate') {
+        const bay = document.getElementById(zData.bayId) || bays[0];
+        bay.appendChild(zone);
+        if (zData.startTime) {
+          const timerEl = zone.querySelector('.timer');
+          timerEl.style.display = 'block';
+          if (zone.dataset.interval) clearInterval(zone.dataset.interval);
+          const startTime = zData.startTime;
+          const interval = setInterval(() => {
+            const diff = Math.floor((Date.now() - startTime) / 1000);
+            const mins = Math.floor(diff / 60), secs = diff % 60;
+            timerEl.textContent = `⏱ ${mins}m ${secs}s`;
+          }, 1000);
+          zone.dataset.interval = interval;
+        }
+      } else if (zData.status === 'dispatched') {
+        dispatchedArea.appendChild(zone);
+        if (zData.dispatchedTime) {
+          const dispEl = zone.querySelector('.dispatched-time');
+          dispEl.style.display = 'block';
+          dispEl.textContent = `(Dispatched at: ${new Date(zData.dispatchedTime).toLocaleTimeString()})`;
+        }
+        if (zone.dataset.interval) { clearInterval(zone.dataset.interval); delete zone.dataset.interval; }
+      }
+
+      const badge = zone.querySelector('.seq-badge');
+      if (zData.sequenceNumber != null) {
+        badge.style.display = 'flex';
+        badge.textContent = zData.sequenceNumber;
+      } else {
+        badge.style.display = 'none';
+        badge.textContent = '';
+      }
     }
-  }
 
     document.querySelectorAll('.zone').forEach(z => {
       if (data[z.id] && data[z.id].deleted) return;
@@ -928,7 +910,6 @@ if (db) {
   });
 } else {
   console.error('Firebase database not initialized. Please refresh the page.');
-  // Show error after a delay to allow login to complete first
   setTimeout(() => {
     if (document.getElementById('loginOverlay') && document.getElementById('loginOverlay').style.display === 'none') {
       alert('Database connection failed. Please refresh the page. If the problem persists, check your internet connection and try clearing your browser cache.');
@@ -938,11 +919,8 @@ if (db) {
 
 // startApp function - ensure everything is initialized
 function startApp() {
-  if (appStarted) return; // Prevent multiple initializations
+  if (appStarted) return;
   appStarted = true;
-  
-  // Ensure all event listeners are properly attached
-  // The Firebase onValue listener is already set up above, so we just need to verify
   console.log('App started successfully');
 }
 </script>
