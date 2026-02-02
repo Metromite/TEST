@@ -575,11 +575,22 @@
       cursor: pointer;
       font-size: 16px;
       user-select: none;
-      transition: transform 0.1s;
+      transition: all 0.2s ease;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(5px);
+      padding: 0;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     }
 
     .control-icon:hover {
-      transform: scale(1.1);
+      transform: translateY(-2px);
+      background: rgba(255, 255, 255, 0.2);
     }
 
     .control-icon.pinned {
@@ -659,6 +670,18 @@
         </div>
 
         <div class="login-row">
+          <label class="small-muted">Vehicle Type</label>
+          <div style="display:flex;gap:15px;margin-top:5px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="newZoneVehicle" value="Van" checked /> Van
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="newZoneVehicle" value="Pickup" /> Pickup
+            </label>
+          </div>
+        </div>
+
+        <div class="login-row">
           <label class="small-muted">Driver Name (Optional)</label>
           <input id="newZoneDriver" placeholder="Driver Name" autocomplete="off" />
         </div>
@@ -697,6 +720,18 @@
             </label>
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
               <input type="radio" name="editZoneCat" value="Consumer" /> Consumer
+            </label>
+          </div>
+        </div>
+
+        <div class="login-row">
+          <label class="small-muted">Vehicle Type</label>
+          <div style="display:flex;gap:15px;margin-top:5px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="editZoneVehicle" value="Van" /> Van
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="radio" name="editZoneVehicle" value="Pickup" /> Pickup
             </label>
           </div>
         </div>
@@ -1094,6 +1129,19 @@
       if (data.driverName) details.appendChild(createDetailSpan(data.driverName, 'Driver'));
       if (data.helperName) details.appendChild(createDetailSpan(data.helperName, 'Helper'));
 
+      // Update Vehicle Type Badge
+      let vehicleBadge = zone.querySelector('.vehicle-badge');
+      if (!vehicleBadge) {
+        vehicleBadge = document.createElement('div');
+        vehicleBadge.className = 'vehicle-badge';
+        vehicleBadge.style.fontSize = '12px';
+        vehicleBadge.style.opacity = '0.8';
+        vehicleBadge.style.marginTop = '4px';
+        zone.appendChild(vehicleBadge);
+      }
+      const vType = data.vehicleType || 'Van';
+      vehicleBadge.textContent = vType;
+
       // 2. ONE-TIME INITIALIZATION (Listeners, static elements)
       if (zone._inited) return;
 
@@ -1143,10 +1191,14 @@
               editZoneDriver.value = val.driverName || '';
               editZoneHelper.value = val.helperName || '';
 
-              // Set Category Radio
               const cat = val.category || 'Consumer';
               const radio = document.querySelector(`input[name="editZoneCat"][value="${cat}"]`);
               if (radio) radio.checked = true;
+
+              // Set Vehicle Type Radio
+              const vType = val.vehicleType || 'Van';
+              const vRadio = document.querySelector(`input[name="editZoneVehicle"][value="${vType}"]`);
+              if (vRadio) vRadio.checked = true;
             }
           });
         }
@@ -1227,20 +1279,33 @@
       addZoneOverlay.style.display = 'none';
     });
 
+    // Helper for Title Case
+    function formatTitleCase(str) {
+      if (!str) return '';
+      return str.replace(/\w\S*/g, (txt) => {
+        return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+      });
+    }
+
     saveZoneBtn.addEventListener('click', () => {
       if (!db) return alert('DB not ready');
-      const name = newZoneName.value.trim();
+      let name = newZoneName.value.trim();
       if (!name) return alert('Please enter a zone name');
 
+      // Unite formatting
+      name = formatTitleCase(name);
+      const driver = formatTitleCase(newZoneDriver.value.trim());
+      const helper = formatTitleCase(newZoneHelper.value.trim());
+
       const selectedCat = document.querySelector('input[name="newZoneCat"]:checked').value;
-      const driver = newZoneDriver.value.trim();
-      const helper = newZoneHelper.value.trim();
+      const selectedVehicle = document.querySelector('input[name="newZoneVehicle"]:checked').value;
 
       const id = name.replace(/\s+/g, '_') + '_' + Date.now();
 
       set(ref(db, 'zones/' + id), {
         name: name,
         category: selectedCat,
+        vehicleType: selectedVehicle,
         driverName: driver,
         helperName: helper,
         status: 'pending'
@@ -1257,14 +1322,21 @@
     saveEditBtn.addEventListener('click', () => {
       if (!db) return alert('DB not ready');
       const id = editZoneId.value;
-      const name = editZoneName.value.trim();
-      const driver = editZoneDriver.value.trim();
-      const helper = editZoneHelper.value.trim();
+
+      let name = editZoneName.value.trim();
+      const driver = formatTitleCase(editZoneDriver.value.trim());
+      const helper = formatTitleCase(editZoneHelper.value.trim());
+
+      if (!id || !name) return alert('Invalid Data');
+
+      // Unite formatting
+      name = formatTitleCase(name);
 
       const selectedCatRadio = document.querySelector('input[name="editZoneCat"]:checked');
       const category = selectedCatRadio ? selectedCatRadio.value : null;
 
-      if (!id || !name) return alert('Invalid Data');
+      const selectedVehicleRadio = document.querySelector('input[name="editZoneVehicle"]:checked');
+      const vehicleType = selectedVehicleRadio ? selectedVehicleRadio.value : 'Van';
 
       const updates = {
         name: name,
@@ -1274,6 +1346,9 @@
 
       if (category) {
         updates.category = category;
+      }
+      if (vehicleType) {
+        updates.vehicleType = vehicleType;
       }
 
       update(ref(db, 'zones/' + id), updates);
@@ -1324,15 +1399,16 @@
       const obj = snap.exists() ? snap.val() : {};
       const rows = [
         [
-          'zoneId',
           'name',
+          'category',
+          'vehicleType',
+          'driver',
+          'helper',
           'status',
           'bayId',
-          'inGateStart_iso',
           'inGateStart_date_UAE',
           'inGateStart_time_UAE',
           'inGateDuration_HH:MM:SS',
-          'dispatchedTime_iso',
           'dispatched_date_UAE',
           'dispatched_time_UAE',
           'sequenceNumber'
@@ -1358,6 +1434,7 @@
 
         const name = z.name || '';
         const category = z.category || 'Consumer';
+        const vType = z.vehicleType || 'Van';
         const driver = z.driverName || '';
         const helper = z.helperName || '';
         const status = z.status || '';
@@ -1395,18 +1472,16 @@
         const seq = z.sequenceNumber != null ? z.sequenceNumber : '';
 
         rows.push([
-          `"${id.replace(/"/g, '""')}"`,
           `"${(name || '').replace(/"/g, '""')}"`,
           `"${(category || '').replace(/"/g, '""')}"`,
+          `"${(vType || '').replace(/"/g, '""')}"`,
           `"${(driver || '').replace(/"/g, '""')}"`,
           `"${(helper || '').replace(/"/g, '""')}"`,
           `"${(status || '').replace(/"/g, '""')}"`,
           `"${(bayId || '').replace(/"/g, '""')}"`,
-          `"${inIso}"`,
           `"${inDateUAE}"`,
           `"${inTimeUAE}"`,
           `"${inGateDur}"`,
-          `"${dispIso}"`,
           `"${dispDateUAE}"`,
           `"${dispTimeUAE}"`,
           seq
