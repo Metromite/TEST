@@ -749,6 +749,94 @@
       letter-spacing: 0.5px;
       text-transform: uppercase;
     }
+
+    /* Autocomplete Dropdown Styling */
+    .autocomplete-container {
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .autocomplete-items {
+      position: absolute;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: none;
+      border-top: none;
+      z-index: 9999;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: rgba(40, 40, 50, 0.95);
+      backdrop-filter: blur(20px);
+      border-radius: 0 0 12px 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      max-height: 200px;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .autocomplete-item {
+      padding: 10px;
+      cursor: pointer;
+      background-color: transparent;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .autocomplete-item:last-child {
+      border-bottom: none;
+    }
+
+    .autocomplete-item:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .autocomplete-active {
+      background-color: rgba(255, 215, 0, 0.2) !important;
+      color: #fff;
+    }
+
+    .autocomplete-code {
+      font-size: 11px;
+      opacity: 0.6;
+      margin-left: 10px;
+      font-family: monospace;
+    }
+
+    /* Chips for Selected Zones */
+    .chips-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .zone-chip {
+      background: rgba(255, 215, 0, 0.15);
+      border: 1px solid rgba(255, 215, 0, 0.3);
+      border-radius: 12px;
+      padding: 4px 10px;
+      font-size: 13px;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .zone-chip .close-chip {
+      cursor: pointer;
+      font-weight: bold;
+      opacity: 0.7;
+      font-size: 14px;
+    }
+
+    .zone-chip .close-chip:hover {
+      opacity: 1;
+      color: var(--danger);
+    }
   </style>
 </head>
 
@@ -808,7 +896,8 @@
 
         <div class="login-row">
           <label class="small-muted">Zone Name</label>
-          <input id="newZoneName" placeholder="e.g. Dubai Marina" autocomplete="off" />
+          <div id="selectedZonesWrapper" class="chips-container"></div>
+          <input id="newZoneName" placeholder="Search zone..." autocomplete="off" />
         </div>
 
         <div class="login-row">
@@ -1066,6 +1155,7 @@
 
     const addZoneOverlay = getElement('addZoneOverlay');
     const newZoneName = getElement('newZoneName');
+    const selectedZonesWrapper = getElement('selectedZonesWrapper'); // Wrapper for chips
     const newZoneDriver = getElement('newZoneDriver');
     const newZoneHelper = getElement('newZoneHelper');
     const saveZoneBtn = getElement('saveZoneBtn');
@@ -1464,9 +1554,35 @@
     enableDrop(pendingPharma);
     enableDrop(pendingConsumer);
 
+    /* ---------------------------
+       MULTIPLE ZONE SELECTION LOGIC
+    */
+    let selectedAddZones = [];
+
+    function renderZoneChips() {
+      const wrapper = document.getElementById('selectedZonesWrapper');
+      if (!wrapper) return;
+      wrapper.innerHTML = '';
+      selectedAddZones.forEach((z, index) => {
+        const chip = document.createElement('div');
+        chip.className = 'zone-chip';
+        chip.innerHTML = `<span>${z}</span><span class="close-chip" data-idx="${index}">×</span>`;
+        wrapper.appendChild(chip);
+      });
+      wrapper.querySelectorAll('.close-chip').forEach(btn => {
+        btn.addEventListener('click', e => {
+          const idx = parseInt(e.target.dataset.idx);
+          selectedAddZones.splice(idx, 1);
+          renderZoneChips();
+        });
+      });
+    }
+
     addBtn.addEventListener('click', () => {
       addZoneOverlay.style.display = 'flex';
       newZoneName.value = '';
+      selectedAddZones = [];
+      renderZoneChips();
       newZoneName.focus();
       newZoneDriver.value = '';
       newZoneHelper.value = '';
@@ -1474,9 +1590,298 @@
 
     cancelAddBtn.addEventListener('click', () => {
       addZoneOverlay.style.display = 'none';
+      closeAllLists();
+      selectedAddZones = [];
+      renderZoneChips();
     });
 
-    // Helper for Title Case
+    /* ---------------------------
+       DATA & AUTOCOMPLETE
+    */
+
+    // Data Lists (Title Case)
+    const DRIVERS_DATA = [
+      { code: "D029", name: "Badrudeen" },
+      { code: "D094", name: "Shuhaib" },
+      { code: "D010", name: "Umar Nazer" },
+      { code: "D048", name: "Moydeen Azeez" },
+      { code: "D064", name: "Shabeer Ali" },
+      { code: "D050", name: "Abdul Mansoor" },
+      { code: "D102", name: "Nasirudeen" },
+      { code: "D046", name: "Azeez Abdulla" },
+      { code: "D104", name: "Ansar / Jisam" },
+      { code: "D037", name: "Nijavudeen" },
+      { code: "D103", name: "Aslam" },
+      { code: "D034", name: "Hussain" },
+      { code: "D011", name: "Imran" },
+      { code: "D033", name: "Naeem" },
+      { code: "D085", name: "Rahul" },
+      { code: "D101", name: "Tintu" },
+      { code: "D019", name: "Moh Kunji" },
+      { code: "D089", name: "Jisam/Ghulam" },
+      { code: "Do27", name: "Sulthan" }, // Kept "Do27" as provided
+      { code: "D024", name: "Sadiq Sha" },
+      { code: "D023", name: "Sabir Sha" },
+      { code: "D026", name: "Jahabar Deen" },
+      { code: "D042", name: "Ghulam" },
+      { code: "D054", name: "Sameer" },
+      { code: "D047", name: "Ahmed Faraj" },
+      { code: "D061", name: "Sayed Alavi" },
+      { code: "D044", name: "Zainul Abid" },
+      { code: "D052", name: "Noushad Ali" },
+      { code: "D099", name: "Noushad P" },
+      { code: "D063", name: "Ajmal" },
+      { code: "D104", name: "Jamsheer" }, // Duplicate code in source, kept as is
+      { code: "D107", name: "Muneeb" },
+      { code: "D088", name: "Shaheer Ali" },
+      { code: "D049", name: "Abdul Jabbar" },
+      { code: "D034", name: "Adil Hassan" }, // Duplicate code D034 in source
+      { code: "D038", name: "Ismail" },
+      { code: "D036", name: "Rashid" },
+      { code: "D032", name: "Sayed Mubarak" },
+      { code: "D051", name: "Ibrahim Kunji" }
+    ];
+
+    const HELPERS_DATA = [
+      { code: "H116", name: "Monawir" },
+      { code: "H105", name: "Yousaf Nobi" },
+      { code: "H113", name: "Chadi" },
+      { code: "H114", name: "Janees" },
+      { code: "H005", name: "Aboobaker" },
+      { code: "H046", name: "Shihabudeen" },
+      { code: "H017", name: "Mujammal" },
+      { code: "H121", name: "Afreen" },
+      { code: "H129", name: "Prateek" },
+      { code: "H118", name: "Shamil" },
+      { code: "H115", name: "Omar" }, // Capitalized
+      { code: "H114", name: "Arsath" }, // Duplicate code H114
+      { code: "H120", name: "Abdul Kader" },
+      { code: "H126", name: "Subin" },
+      { code: "H066", name: "Christopher" },
+      { code: "H011", name: "Sudakaran" },
+      { code: "H130", name: "Javeed/Sub /Bulk" }, // Capitalized
+      { code: "H070", name: "Harshad" },
+      { code: "H023", name: "Adil Sarwar" },
+      { code: "H104", name: "Shakir" },
+      { code: "H051", name: "Sher Bader" },
+      { code: "H112", name: "Abbas" },
+      { code: "H050", name: "Ranjith" }
+    ];
+
+    const ZONES_DATA = [
+      "Fujairah",
+      "Rak/Uaq", // Adjusted case
+      "Jabel Ali",
+      "Al Qouz-1",
+      "Al Qouz-2",
+      "Jumairah",
+      "BurDubai", // Kept specific casing if desired, or "Burdubai"
+      "Mirdiff",
+      "Qusais",
+      "Deira",
+      "Ajman",
+      "Shj-Sanayya",
+      "Shj-Rolla"
+    ];
+
+    function autocomplete(inp, arr, type) {
+      /* type: 'driver', 'helper', or 'zone' */
+      let currentFocus;
+
+      inp.parentNode.style.position = "relative"; // Ensure parent is relative
+
+      inp.addEventListener("input", function (e) {
+        let a, b, i, val = this.value;
+        closeAllLists();
+        if (!val && type !== 'zone') { return false; } // For zones/drivers we might want to show all on click? User said "when writin a word". Let's stick to typing or maybe show all on focus? 
+        // User said "when writin a word it starts predetecting". 
+        // However for "drop down menu", usually clicking shows options.
+        // Let's allow showing all if empty for better UX if desired, but standard is type to search. 
+        // Implementation: Type to search.
+        if (!val) return false;
+        currentFocus = -1;
+
+        a = document.createElement("DIV");
+        a.setAttribute("id", this.id + "autocomplete-list");
+        a.setAttribute("class", "autocomplete-items");
+
+        this.parentNode.appendChild(a);
+
+        let matches = 0;
+
+        // Add "None" option first if needed? No, usually at bottom or top.
+        // User said: "leave an option... called none".
+        // We will add it at the end if no matches or always? "if not avalaible... choose them if not avalaible leave an option... called none".
+        // We will always add a "None" option at the very top or bottom to allow clearing.
+
+        function createItem(label, code, valueToSet) {
+          let item = document.createElement("DIV");
+          item.className = "autocomplete-item";
+
+          // Highlight match
+          let regex = new RegExp("(" + val + ")", "gi");
+          let highlightLabel = label.replace(regex, "<strong style='color:#ffd700'>$1</strong>");
+          let highlightCode = code ? code.replace(regex, "<strong style='color:#ffd700'>$1</strong>") : "";
+
+          if (code) {
+            item.innerHTML = `<span>${highlightLabel}</span><span class='autocomplete-code'>${highlightCode}</span>`;
+          } else {
+            item.innerHTML = `<span>${highlightLabel}</span>`;
+          }
+
+          item.innerHTML += "<input type='hidden' value='" + valueToSet + "'>";
+
+          item.addEventListener("click", function (e) {
+            inp.value = this.getElementsByTagName("input")[0].value;
+            closeAllLists();
+          });
+          return item;
+        }
+
+        /* Helper to add "None" */
+        function addNoneOption() {
+          let item = document.createElement("DIV");
+          item.className = "autocomplete-item";
+          item.innerHTML = "<span style='font-style:italic;opacity:0.7'>None</span>";
+          item.innerHTML += "<input type='hidden' value='None'>";
+          item.addEventListener("click", function (e) {
+            inp.value = "None";
+            closeAllLists();
+          });
+          a.appendChild(item);
+        }
+
+        // Filter Logic
+        for (i = 0; i < arr.length; i++) {
+          // Check if starts with or contains. User said "predicting". Contains is better.
+          let match = false;
+          let obj = arr[i];
+          let textVal = "";
+          let codeVal = "";
+          let valueToSet = "";
+
+          if (type === 'zone') {
+            textVal = obj; // string
+            valueToSet = obj;
+            if (textVal.toUpperCase().includes(val.toUpperCase())) match = true;
+          } else {
+            textVal = obj.name;
+            codeVal = obj.code;
+            valueToSet = obj.name; // Set Name in input
+            if (textVal.toUpperCase().includes(val.toUpperCase()) ||
+              codeVal.toUpperCase().includes(val.toUpperCase())) {
+              match = true;
+            }
+          }
+
+          if (match) {
+            // Logic modification for Add Zone (Chips)
+            if (inp.id === 'newZoneName') {
+              let customItem = document.createElement("DIV");
+              customItem.className = "autocomplete-item";
+              let regex = new RegExp("(" + val + ")", "gi");
+              let highlightLabel = textVal.replace(regex, "<strong style='color:#ffd700'>$1</strong>");
+
+              customItem.innerHTML = `<span>${highlightLabel}</span>`;
+              customItem.innerHTML += "<input type='hidden' value='" + valueToSet + "'>";
+
+              customItem.addEventListener("click", function (e) {
+                const valToAdd = this.getElementsByTagName("input")[0].value;
+                if (!selectedAddZones.includes(valToAdd)) {
+                  selectedAddZones.push(valToAdd);
+                  const wrapper = document.getElementById('selectedZonesWrapper');
+                  if (wrapper && typeof renderZoneChips === 'function') renderZoneChips();
+                }
+                inp.value = "";
+                closeAllLists();
+              });
+              a.appendChild(customItem);
+            } else {
+              a.appendChild(createItem(textVal, codeVal, valueToSet));
+            }
+            matches++;
+          }
+        }
+
+        // Loop finished. If matches < total, or always, add None?
+        // User: "if not avalaible...".Implies if the desired one isn't there, select None.
+        // So "None" should always be an option.
+        addNoneOption();
+      });
+
+      // Execute on keydown for navigation
+      inp.addEventListener("keydown", function (e) {
+        let x = document.getElementById(this.id + "autocomplete-list");
+        if (x) x = x.getElementsByTagName("div");
+        if (e.keyCode == 40) { // Down
+          currentFocus++;
+          addActive(x);
+        } else if (e.keyCode == 38) { // Up
+          currentFocus--;
+          addActive(x);
+        } else if (e.keyCode == 13) { // Enter
+          e.preventDefault();
+          if (currentFocus > -1) {
+            if (x) x[currentFocus].click();
+          } else {
+            // If no suggestion selected, add typed value as chip (only for newZoneName)
+            if (this.id === 'newZoneName' && this.value.trim() !== "") {
+              const valToAdd = formatTitleCase(this.value.trim());
+
+              // VALIDATION: Check if exists in ZONES_DATA (arr)
+              const isValid = arr.some(z => z.toLowerCase() === valToAdd.toLowerCase());
+              if (!isValid) {
+                alert('Please select a valid zone from the list.');
+                return;
+              }
+
+              closeAllLists();
+              if (!selectedAddZones.includes(valToAdd)) {
+                selectedAddZones.push(valToAdd);
+                const wrapper = document.getElementById('selectedZonesWrapper');
+                if (wrapper && typeof renderZoneChips === 'function') renderZoneChips();
+              }
+              this.value = "";
+            }
+          }
+        }
+      });
+      function addActive(x) {
+        if (!x) return false;
+        removeActive(x);
+        if (currentFocus >= x.length) currentFocus = 0;
+        if (currentFocus < 0) currentFocus = (x.length - 1);
+        x[currentFocus].classList.add("autocomplete-active");
+        x[currentFocus].scrollIntoView({ block: 'nearest' });
+      }
+      function removeActive(x) {
+        for (let i = 0; i < x.length; i++) {
+          x[i].classList.remove("autocomplete-active");
+        }
+      }
+      function closeAllLists(elmnt) {
+        let x = document.getElementsByClassName("autocomplete-items");
+        for (let i = 0; i < x.length; i++) {
+          if (elmnt != x[i] && elmnt != inp) {
+            x[i].parentNode.removeChild(x[i]);
+          }
+        }
+      }
+      document.addEventListener("click", function (e) {
+        closeAllLists(e.target);
+      });
+    }
+
+    // Initialize Autocomplete
+    autocomplete(document.getElementById("newZoneName"), ZONES_DATA, 'zone');
+    autocomplete(document.getElementById("newZoneDriver"), DRIVERS_DATA, 'driver');
+    autocomplete(document.getElementById("newZoneHelper"), HELPERS_DATA, 'helper');
+
+    autocomplete(document.getElementById("editZoneName"), ZONES_DATA, 'zone');
+    autocomplete(document.getElementById("editZoneDriver"), DRIVERS_DATA, 'driver');
+    autocomplete(document.getElementById("editZoneHelper"), HELPERS_DATA, 'helper');
+
+    // Helper for Title Case used elsewhere
     function formatTitleCase(str) {
       if (!str) return '';
       return str.replace(/\w\S*/g, (txt) => {
@@ -1486,21 +1891,37 @@
 
     saveZoneBtn.addEventListener('click', () => {
       if (!db) return alert('DB not ready');
-      let name = newZoneName.value.trim();
-      if (!name) return alert('Please enter a zone name');
 
-      // Unite formatting
-      name = formatTitleCase(name);
+      // Use selectedAddZones if available, else fallback to input value
+      let zonesProcess = [...selectedAddZones];
+      const directInput = newZoneName.value.trim();
+      if (directInput) {
+        const formatted = formatTitleCase(directInput);
+        const isValid = ZONES_DATA.some(z => z.toLowerCase() === formatted.toLowerCase());
+        if (!isValid) {
+          alert('Invalid zone name: ' + directInput + '. Please select from the list.');
+          return;
+        }
+        if (!zonesProcess.includes(formatted)) {
+          zonesProcess.push(formatted);
+        }
+      }
+
+      if (zonesProcess.length === 0) return alert('Please select or enter at least one zone name');
+
+      // Create Single Entry with Combined Names
+      const combinedName = zonesProcess.join(' + ');
+
       const driver = formatTitleCase(newZoneDriver.value.trim());
       const helper = formatTitleCase(newZoneHelper.value.trim());
-
       const selectedCat = document.querySelector('input[name="newZoneCat"]:checked').value;
       const selectedVehicle = document.querySelector('input[name="newZoneVehicle"]:checked').value;
 
-      const id = name.replace(/\s+/g, '_') + '_' + Date.now();
+      // Unique ID
+      const id = combinedName.replace(/\s+/g, '_').replace(/\+/g, '_plus_') + '_' + Date.now();
 
       set(ref(db, 'zones/' + id), {
-        name: name,
+        name: combinedName,
         category: selectedCat,
         vehicleType: selectedVehicle,
         driverName: driver,
@@ -1509,11 +1930,14 @@
       });
 
       addZoneOverlay.style.display = 'none';
+      selectedAddZones = [];
+      renderZoneChips();
     });
 
     // Edit Modal Listeners
     cancelEditBtn.addEventListener('click', () => {
       editZoneOverlay.style.display = 'none';
+      closeAllLists();
     });
 
     saveEditBtn.addEventListener('click', () => {
