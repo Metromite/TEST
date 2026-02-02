@@ -734,6 +734,21 @@
       border: 1px solid rgba(255, 215, 0, 0.5);
       z-index: 100;
     }
+
+    /* Vehicle Badge (Van/Pickup) Styling */
+    .vehicle-badge {
+      font-size: 11px;
+      font-weight: 600;
+      opacity: 0.9;
+      margin-top: 6px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 
@@ -1277,9 +1292,7 @@
       if (!vehicleBadge) {
         vehicleBadge = document.createElement('div');
         vehicleBadge.className = 'vehicle-badge';
-        vehicleBadge.style.fontSize = '12px';
-        vehicleBadge.style.opacity = '0.8';
-        vehicleBadge.style.marginTop = '4px';
+        zone.appendChild(vehicleBadge);
         zone.appendChild(vehicleBadge);
       }
       const vType = data.vehicleType || 'Van';
@@ -1810,22 +1823,11 @@
     };
 
     function initPendingUI() {
-      try {
-        const saved = localStorage.getItem('pending_ui_state');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          // merge
-          if (parsed.Pharma) Object.assign(pendingState.Pharma, parsed.Pharma);
-          if (parsed.Consumer) Object.assign(pendingState.Consumer, parsed.Consumer);
-        }
-      } catch (e) { }
-
-      // Force Consumer hidden if not pinned
-      if (!pendingState.Consumer.pinned) pendingState.Consumer.open = false;
-
-      // If pinned, ensure open
-      if (pendingState.Pharma.pinned) pendingState.Pharma.open = true;
-      if (pendingState.Consumer.pinned) pendingState.Consumer.open = true;
+      // Start fresh every time (no localStorage)
+      pendingState.Pharma.open = false;
+      pendingState.Pharma.pinned = false;
+      pendingState.Consumer.open = false;
+      pendingState.Consumer.pinned = false;
 
       renderPendingUI('Pharma');
       renderPendingUI('Consumer');
@@ -1837,9 +1839,7 @@
       });
     }
 
-    function savePendingState() {
-      localStorage.setItem('pending_ui_state', JSON.stringify(pendingState));
-    }
+    // savePendingState removed to prevent persistence
 
     function renderPendingUI(cat) {
       const wrap = document.getElementById('wrap-' + cat);
@@ -1877,8 +1877,11 @@
         // if opening and NOT pinned, it just opens temporarily
       } else if (type === 'pin') {
         pendingState[cat].pinned = !pendingState[cat].pinned;
-        if (pendingState[cat].pinned) pendingState[cat].open = true; // Pinning forces open
-        savePendingState();
+        if (pendingState[cat].pinned) {
+          pendingState[cat].open = true; // Pinning forces open
+        } else {
+          pendingState[cat].open = false; // Unpinning hides immediately
+        }
       }
       renderPendingUI(cat);
     };
