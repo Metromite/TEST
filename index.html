@@ -952,7 +952,8 @@
 
         <div class="login-row">
           <label class="small-muted">Zone Name</label>
-          <input id="editZoneName" placeholder="Zone Name" autocomplete="off" />
+          <div id="selectedEditZonesWrapper" class="chips-container"></div>
+          <input id="editZoneName" placeholder="Search zone..." autocomplete="off" />
         </div>
 
         <div class="login-row">
@@ -1165,6 +1166,7 @@
     const editZoneOverlay = getElement('editZoneOverlay');
     const editZoneId = getElement('editZoneId');
     const editZoneName = getElement('editZoneName');
+    const selectedEditZonesWrapper = getElement('selectedEditZonesWrapper');
     const editZoneDriver = getElement('editZoneDriver');
     const editZoneHelper = getElement('editZoneHelper');
     const saveEditBtn = getElement('saveEditBtn');
@@ -1467,6 +1469,9 @@
         // Open Edit Modal instead of prompt
         editZoneOverlay.style.display = 'flex';
         editZoneId.value = zone.id;
+        selectedEditZones = [];
+        renderEditZoneChips();
+        editZoneName.value = ''; // Clear input initially
 
         // Fetch latest data from DB to populate modal safely
         // (Visual data might be slightly stale if update hasn't propagated, but usually it's fine)
@@ -1474,7 +1479,13 @@
           get(ref(db, 'zones/' + zone.id)).then(snap => {
             if (snap.exists()) {
               const val = snap.val();
-              editZoneName.value = val.name || '';
+              const fullNames = val.name || '';
+              // Populate chips
+              if (fullNames) {
+                selectedEditZones = fullNames.split(' + ').map(s => s.trim()).filter(s => s);
+                renderEditZoneChips();
+              }
+
               editZoneDriver.value = val.driverName || '';
               editZoneHelper.value = val.helperName || '';
 
@@ -1596,6 +1607,30 @@
     });
 
     /* ---------------------------
+       EDIT ZONE CHIPS LOGIC
+    */
+    let selectedEditZones = [];
+
+    function renderEditZoneChips() {
+      const wrapper = document.getElementById('selectedEditZonesWrapper');
+      if (!wrapper) return;
+      wrapper.innerHTML = '';
+      selectedEditZones.forEach((z, index) => {
+        const chip = document.createElement('div');
+        chip.className = 'zone-chip';
+        chip.innerHTML = `<span>${z}</span><span class="close-chip" data-idx="${index}">×</span>`;
+        wrapper.appendChild(chip);
+      });
+      wrapper.querySelectorAll('.close-chip').forEach(btn => {
+        btn.addEventListener('click', e => {
+          const idx = parseInt(e.target.dataset.idx);
+          selectedEditZones.splice(idx, 1);
+          renderEditZoneChips();
+        });
+      });
+    }
+
+    /* ---------------------------
        DATA & AUTOCOMPLETE
     */
 
@@ -1609,7 +1644,7 @@
       { code: "D050", name: "Abdul Mansoor" },
       { code: "D102", name: "Nasirudeen" },
       { code: "D046", name: "Azeez Abdulla" },
-      { code: "D104", name: "Ansar / Jisam" },
+      { code: "D104", name: "Ansar" },
       { code: "D037", name: "Nijavudeen" },
       { code: "D103", name: "Aslam" },
       { code: "D034", name: "Hussain" },
@@ -1618,7 +1653,7 @@
       { code: "D085", name: "Rahul" },
       { code: "D101", name: "Tintu" },
       { code: "D019", name: "Moh Kunji" },
-      { code: "D089", name: "Jisam/Ghulam" },
+      { code: "D089", name: "Jisam" },
       { code: "Do27", name: "Sulthan" }, // Kept "Do27" as provided
       { code: "D024", name: "Sadiq Sha" },
       { code: "D023", name: "Sabir Sha" },
@@ -1665,7 +1700,16 @@
       { code: "H104", name: "Shakir" },
       { code: "H051", name: "Sher Bader" },
       { code: "H112", name: "Abbas" },
-      { code: "H050", name: "Ranjith" }
+      { code: "H050", name: "Ranjith" },
+      { code: "H024", name: "Musthafa" },
+      { code: "H034", name: "Riyas Kuthbudeen" },
+      { code: "H109", name: "Al Ameen" },
+      { code: "H100", name: "Sajeer" },
+      { code: "H026", name: "Riyas Ahmed" },
+      { code: "H013", name: "Haris" },
+      { code: "H082", name: "Hassan Muhammed" },
+      { code: "H049", name: "Shobith" },
+      { code: "H062", name: "Rakshith" }
     ];
 
     const ZONES_DATA = [
@@ -1775,8 +1819,8 @@
           }
 
           if (match) {
-            // Logic modification for Add Zone (Chips)
-            if (inp.id === 'newZoneName') {
+            // Logic modification for Add Zone AND Edit Zone (Chips)
+            if (inp.id === 'newZoneName' || inp.id === 'editZoneName') {
               let customItem = document.createElement("DIV");
               customItem.className = "autocomplete-item";
               let regex = new RegExp("(" + val + ")", "gi");
@@ -1787,11 +1831,19 @@
 
               customItem.addEventListener("click", function (e) {
                 const valToAdd = this.getElementsByTagName("input")[0].value;
-                if (!selectedAddZones.includes(valToAdd)) {
-                  selectedAddZones.push(valToAdd);
-                  const wrapper = document.getElementById('selectedZonesWrapper');
-                  if (wrapper && typeof renderZoneChips === 'function') renderZoneChips();
+
+                if (inp.id === 'newZoneName') {
+                  if (!selectedAddZones.includes(valToAdd)) {
+                    selectedAddZones.push(valToAdd);
+                    renderZoneChips();
+                  }
+                } else if (inp.id === 'editZoneName') {
+                  if (!selectedEditZones.includes(valToAdd)) {
+                    selectedEditZones.push(valToAdd);
+                    renderEditZoneChips();
+                  }
                 }
+
                 inp.value = "";
                 closeAllLists();
               });
@@ -1824,8 +1876,8 @@
           if (currentFocus > -1) {
             if (x) x[currentFocus].click();
           } else {
-            // If no suggestion selected, add typed value as chip (only for newZoneName)
-            if (this.id === 'newZoneName' && this.value.trim() !== "") {
+            // If no suggestion selected, add typed value as chip
+            if ((this.id === 'newZoneName' || this.id === 'editZoneName') && this.value.trim() !== "") {
               const valToAdd = formatTitleCase(this.value.trim());
 
               // VALIDATION: Check if exists in ZONES_DATA (arr)
@@ -1836,10 +1888,17 @@
               }
 
               closeAllLists();
-              if (!selectedAddZones.includes(valToAdd)) {
-                selectedAddZones.push(valToAdd);
-                const wrapper = document.getElementById('selectedZonesWrapper');
-                if (wrapper && typeof renderZoneChips === 'function') renderZoneChips();
+
+              if (this.id === 'newZoneName') {
+                if (!selectedAddZones.includes(valToAdd)) {
+                  selectedAddZones.push(valToAdd);
+                  renderZoneChips();
+                }
+              } else if (this.id === 'editZoneName') {
+                if (!selectedEditZones.includes(valToAdd)) {
+                  selectedEditZones.push(valToAdd);
+                  renderEditZoneChips();
+                }
               }
               this.value = "";
             }
@@ -1938,6 +1997,8 @@
     cancelEditBtn.addEventListener('click', () => {
       editZoneOverlay.style.display = 'none';
       closeAllLists();
+      selectedEditZones = [];
+      renderEditZoneChips();
     });
 
     saveEditBtn.addEventListener('click', () => {
@@ -1948,10 +2009,7 @@
       const driver = formatTitleCase(editZoneDriver.value.trim());
       const helper = formatTitleCase(editZoneHelper.value.trim());
 
-      if (!id || !name) return alert('Invalid Data');
-
-      // Unite formatting
-      name = formatTitleCase(name);
+      if (!id) return alert('Invalid Data');
 
       const selectedCatRadio = document.querySelector('input[name="editZoneCat"]:checked');
       const category = selectedCatRadio ? selectedCatRadio.value : null;
@@ -1960,7 +2018,6 @@
       const vehicleType = selectedVehicleRadio ? selectedVehicleRadio.value : 'Van';
 
       const updates = {
-        name: name,
         driverName: driver,
         helperName: helper
       };
@@ -1972,9 +2029,32 @@
         updates.vehicleType = vehicleType;
       }
 
+      // Check if user added any direct input for edit name that wasn't chipped yet
+      const directInput = editZoneName.value.trim();
+      if (directInput) {
+        const formatted = formatTitleCase(directInput);
+        const isValid = ZONES_DATA.some(z => z.toLowerCase() === formatted.toLowerCase());
+        if (!isValid) {
+          alert('Invalid zone name: ' + directInput + '. Please select from the list.');
+          return;
+        }
+        if (!selectedEditZones.includes(formatted)) {
+          selectedEditZones.push(formatted);
+        }
+      }
+
+      if (selectedEditZones.length > 0) {
+        updates.name = selectedEditZones.join(' + ');
+      } else {
+        // Fallback or error? If all chips removed, maybe alert
+        return alert('Please select at least one zone');
+      }
+
       update(ref(db, 'zones/' + id), updates);
 
       editZoneOverlay.style.display = 'none';
+      selectedEditZones = [];
+      renderEditZoneChips();
     });
 
     editToggleBtn.addEventListener('click', () => {
