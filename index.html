@@ -1071,14 +1071,16 @@
     }
 
     function initZone(zone, data = {}) {
-      if (zone._inited) return;
+      // 1. ALWAYS UPDATE CONTENT (Name, Driver, Helper)
 
+      // Update Name
       if (!zone.querySelector('.name')) {
         const n = document.createElement('span'); n.className = 'name'; n.textContent = data.name || zone.id; zone.appendChild(n);
       } else if (data.name) {
         zone.querySelector('.name').textContent = data.name;
       }
 
+      // Update Details (Driver/Helper)
       let details = zone.querySelector('.details-block');
       if (!details) {
         details = document.createElement('div');
@@ -1091,6 +1093,9 @@
       details.innerHTML = '';
       if (data.driverName) details.appendChild(createDetailSpan(data.driverName, 'Driver'));
       if (data.helperName) details.appendChild(createDetailSpan(data.helperName, 'Helper'));
+
+      // 2. ONE-TIME INITIALIZATION (Listeners, static elements)
+      if (zone._inited) return;
 
       zone._inited = true;
 
@@ -1127,21 +1132,9 @@
         // Open Edit Modal instead of prompt
         editZoneOverlay.style.display = 'flex';
         editZoneId.value = zone.id;
-        editZoneName.value = zone.querySelector('.name')?.textContent || '';
 
-        // Find current driver/helper from data or DOM logic? 
-        // Ideally we should have data in the zone element or fetch from DB. 
-        // Since we are inside initZone, "data" is available but might be stale if re-clicked without re-init?
-        // Actually initZone runs on snapshot update. So "data" is fresh from closure if we are careful?
-        // No, initZone is called multiple times. 
-        // BUT, looking at the code structure: initZone is called inside onValue loop. 
-        // So this listener is re-added every time? No, line 960: "if (zone._inited) return;" 
-        // So the listener is added ONLY ONCE. The "data" in closure is the FIRST data. 
-        // This is a bug in the original code too if data updates.
-        // Fix: We should fetch fresh data from DB or store it on the element.
-
-        // Better approach: Let's read from the DB to be sure, or rely on what's visually there?
-        // Reading from DB is safer.
+        // Fetch latest data from DB to populate modal safely
+        // (Visual data might be slightly stale if update hasn't propagated, but usually it's fine)
         if (db) {
           get(ref(db, 'zones/' + zone.id)).then(snap => {
             if (snap.exists()) {
