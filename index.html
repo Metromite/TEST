@@ -137,6 +137,8 @@
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
+      align-content: flex-start;
+      /* Ensure content starts at top */
       gap: 12px;
       background: var(--glass-bg);
       backdrop-filter: blur(18px) saturate(180%);
@@ -146,6 +148,21 @@
       max-width: 100%;
       min-height: 64px;
       box-sizing: border-box;
+    }
+
+    /* Common Header Styling for Bays & Dispatched Zones */
+    .bay h2,
+    .dispatched-zones h2 {
+      width: 100%;
+      text-align: center;
+      text-transform: uppercase;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin: 0 0 12px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.9);
     }
 
     /* badges & small text */
@@ -681,6 +698,22 @@
        but Pure CSS :hover is smoother. 
        We will Scope it to .bay .zone and .dispatched-zones .zone */
 
+    /* Persistent Glows (Lower intensity) */
+    .bay .zone[data-category="Pharma"],
+    .dispatched-zones .zone[data-category="Pharma"] {
+      box-shadow: 0 0 15px rgba(79, 195, 247, 0.3), inset 0 0 5px rgba(79, 195, 247, 0.1);
+      border: 1px solid rgba(79, 195, 247, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    .bay .zone[data-category="Consumer"],
+    .dispatched-zones .zone[data-category="Consumer"] {
+      box-shadow: 0 0 15px rgba(255, 215, 0, 0.3), inset 0 0 5px rgba(255, 215, 0, 0.1);
+      border: 1px solid rgba(255, 215, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    /* Hover Glows (Higher intensity) */
     .bay .zone[data-category="Pharma"]:hover,
     .dispatched-zones .zone[data-category="Pharma"]:hover {
       box-shadow: 0 0 25px rgba(79, 195, 247, 0.6), inset 0 0 10px rgba(79, 195, 247, 0.2);
@@ -1286,6 +1319,13 @@
         md.addEventListener('click', async (e) => {
           e.stopPropagation();
           if (!editMode) return;
+
+          // Prevent deleting if in Bay or Dispatched areas
+          if (zone.closest('.bay') || zone.closest('.dispatched-zones')) {
+            alert('Cannot delete zones in Dispatch Bay or Dispatched Zone. Move to Pending first.');
+            return;
+          }
+
           if (!confirm('Delete zone "' + (zone.querySelector('.name')?.textContent || zone.id) + '"?')) return;
           if (!db) {
             alert('Database not ready. Please refresh the page.');
@@ -1307,6 +1347,12 @@
       zone.addEventListener('click', (ev) => {
         if (!editMode) return;
         ev.stopPropagation();
+
+        // Prevent editing if in Bay or Dispatched areas
+        if (zone.closest('.bay') || zone.closest('.dispatched-zones')) {
+          alert('Cannot edit zones in Dispatch Bay or Dispatched Zone. Move to Pending first.');
+          return;
+        }
 
         // Open Edit Modal instead of prompt
         editZoneOverlay.style.display = 'flex';
