@@ -601,10 +601,109 @@
     .pending-zones.hidden {
       display: none !important;
     }
+
+    /* TOAST / CATEGORY INDICATOR (Premium Glassy) */
+    .category-indicator {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-100px);
+      /* Start hidden above */
+      background: rgba(25, 25, 35, 0.6);
+      backdrop-filter: blur(20px) saturate(180%);
+      padding: 12px 40px;
+      border-radius: 40px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255, 255, 255, 0.05);
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .category-indicator.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .category-indicator h1 {
+      margin: 0;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: linear-gradient(to bottom, #fff, #bbb);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .category-indicator .sub-text {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.8;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Specific Glows for Indicator */
+    .category-indicator.ind-pharma {
+      border-color: rgba(79, 195, 247, 0.4);
+      box-shadow: 0 10px 50px rgba(79, 195, 247, 0.3), inset 0 0 20px rgba(79, 195, 247, 0.1);
+    }
+
+    .category-indicator.ind-pharma h1 {
+      background: linear-gradient(to bottom, #e1f5fe, #4fc3f7);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+
+    .category-indicator.ind-consumer {
+      border-color: rgba(255, 215, 0, 0.4);
+      box-shadow: 0 10px 50px rgba(255, 215, 0, 0.3), inset 0 0 20px rgba(255, 215, 0, 0.1);
+    }
+
+    .category-indicator.ind-consumer h1 {
+      background: linear-gradient(to bottom, #fffde7, #ffd700);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+
+
+    /* ZONE HOVER GLOWS (Only in Bay or Dispatched) */
+    /* We use a specific class added by JS or verify parent in JS, 
+       but Pure CSS :hover is smoother. 
+       We will Scope it to .bay .zone and .dispatched-zones .zone */
+
+    .bay .zone[data-category="Pharma"]:hover,
+    .dispatched-zones .zone[data-category="Pharma"]:hover {
+      box-shadow: 0 0 25px rgba(79, 195, 247, 0.6), inset 0 0 10px rgba(79, 195, 247, 0.2);
+      border: 1px solid rgba(79, 195, 247, 0.5);
+      z-index: 100;
+    }
+
+    .bay .zone[data-category="Consumer"]:hover,
+    .dispatched-zones .zone[data-category="Consumer"]:hover {
+      box-shadow: 0 0 25px rgba(255, 215, 0, 0.6), inset 0 0 10px rgba(255, 215, 0, 0.2);
+      border: 1px solid rgba(255, 215, 0, 0.5);
+      z-index: 100;
+    }
   </style>
 </head>
 
 <body>
+  <!-- Category Hover Indicator -->
+  <div id="categoryIndicator" class="category-indicator">
+    <span class="sub-text">Category</span>
+    <h1 id="catIndText">CONSUMER</h1>
+  </div>
+
   <!-- Login overlay -->
   <div id="loginOverlay" style="display:flex">
     <div id="loginBox" role="dialog" aria-modal="true">
@@ -926,6 +1025,10 @@
     const saveEditBtn = getElement('saveEditBtn');
     const cancelEditBtn = getElement('cancelEditBtn');
 
+    // Category Indicator Elements
+    const categoryIndicator = getElement('categoryIndicator');
+    const catIndText = getElement('catIndText');
+
     let editMode = false;
     let appStarted = false;
 
@@ -1142,10 +1245,38 @@
       const vType = data.vehicleType || 'Van';
       vehicleBadge.textContent = vType;
 
+      // Update Category for CSS hooks
+      const cat = data.category || 'Consumer';
+      zone.dataset.category = cat;
+
       // 2. ONE-TIME INITIALIZATION (Listeners, static elements)
       if (zone._inited) return;
 
       zone._inited = true;
+
+      // Event Listeners for Category Indicator
+      zone.addEventListener('mouseenter', () => {
+        // Only show if the zone is inside a Bay or Dispatched area
+        // We can check the closest parent with class 'bay' or id 'dispatchedZones'
+        const isBay = zone.closest('.bay');
+        const isDispatched = zone.closest('#dispatchedZones');
+
+        if (isBay || isDispatched) {
+          const c = zone.dataset.category || 'Consumer';
+          catIndText.textContent = c.toUpperCase();
+          categoryIndicator.className = 'category-indicator show'; // reset classes
+
+          if (c === 'Pharma') {
+            categoryIndicator.classList.add('ind-pharma');
+          } else {
+            categoryIndicator.classList.add('ind-consumer'); // Default to Consumer style
+          }
+        }
+      });
+
+      zone.addEventListener('mouseleave', () => {
+        categoryIndicator.className = 'category-indicator'; // this removes 'show' and color classes
+      });
 
       if (!zone.querySelector('.seq-badge')) {
         const sb = document.createElement('div'); sb.className = 'seq-badge'; zone.appendChild(sb);
