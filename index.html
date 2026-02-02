@@ -1636,6 +1636,9 @@
         }
       } catch (e) { }
 
+      // Force Consumer hidden if not pinned
+      if (!pendingState.Consumer.pinned) pendingState.Consumer.open = false;
+
       // If pinned, ensure open
       if (pendingState.Pharma.pinned) pendingState.Pharma.open = true;
       if (pendingState.Consumer.pinned) pendingState.Consumer.open = true;
