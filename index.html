@@ -1724,8 +1724,10 @@
       "Qusais",
       "Deira",
       "Ajman",
-      "Shj-Sanayya",
-      "Shj-Rolla"
+      "Shajarah-sanaiya",
+      "Sharjah-buhaira",
+      "Dubai",
+      "Sharjah"
     ];
 
     function autocomplete(inp, arr, type) {
@@ -1973,6 +1975,25 @@
 
       const driver = formatTitleCase(newZoneDriver.value.trim());
       const helper = formatTitleCase(newZoneHelper.value.trim());
+
+      // Validate driver if not empty and not "None"
+      if (driver && driver !== 'None') {
+        const isValidDriver = DRIVERS_DATA.some(d => d.name.toLowerCase() === driver.toLowerCase());
+        if (!isValidDriver) {
+          alert('Invalid driver name: ' + driver + '. Please select from the list or choose "None".');
+          return;
+        }
+      }
+
+      // Validate helper if not empty and not "None"
+      if (helper && helper !== 'None') {
+        const isValidHelper = HELPERS_DATA.some(h => h.name.toLowerCase() === helper.toLowerCase());
+        if (!isValidHelper) {
+          alert('Invalid helper name: ' + helper + '. Please select from the list or choose "None".');
+          return;
+        }
+      }
+
       const selectedCat = document.querySelector('input[name="newZoneCat"]:checked').value;
       const selectedVehicle = document.querySelector('input[name="newZoneVehicle"]:checked').value;
 
@@ -2010,6 +2031,24 @@
       const helper = formatTitleCase(editZoneHelper.value.trim());
 
       if (!id) return alert('Invalid Data');
+
+      // Validate driver if not empty and not "None"
+      if (driver && driver !== 'None') {
+        const isValidDriver = DRIVERS_DATA.some(d => d.name.toLowerCase() === driver.toLowerCase());
+        if (!isValidDriver) {
+          alert('Invalid driver name: ' + driver + '. Please select from the list or choose "None".');
+          return;
+        }
+      }
+
+      // Validate helper if not empty and not "None"
+      if (helper && helper !== 'None') {
+        const isValidHelper = HELPERS_DATA.some(h => h.name.toLowerCase() === helper.toLowerCase());
+        if (!isValidHelper) {
+          alert('Invalid helper name: ' + helper + '. Please select from the list or choose "None".');
+          return;
+        }
+      }
 
       const selectedCatRadio = document.querySelector('input[name="editZoneCat"]:checked');
       const category = selectedCatRadio ? selectedCatRadio.value : null;
